@@ -128,3 +128,82 @@ instead of only typed input?
 `SUBMISSION.md`. ADR-0001 follow-ups now include "Google Calendar harvester
 (OAuth)" and "Microsoft Graph harvester (OAuth)" alongside the existing
 P3 Supabase / TypeScript migration items.
+
+---
+
+## 2026-05-16 — Google Calendar harvester: real API, OAuth-Playground access token
+
+**Context:** After shipping the GitHub-live + pasted-calendar-text harvesters,
+we wanted real Google Calendar reads in the demo without the cost of a full
+OAuth integration (GCP project + consent screen + verification + refresh-
+token storage).
+
+**Observation:** Google's OAuth Playground (developers.google.com/oauthplayground)
+issues a short-lived (~1h) access token for any scope a developer is willing
+to consent to in their own Google account. That's enough to power a hackathon
+demo against the user's own calendar via the real Calendar API v3 endpoint
+`GET /calendars/primary/events`.
+
+**Decision:** Ship `src/harvesters/gcal.mjs` as a real Calendar API caller
+that accepts an access token via the POST body (`accessToken`) or the
+`GOOGLE_ACCESS_TOKEN` env var. The token is short-lived and never persisted.
+Production wiring will replace this with a full OAuth flow but keep the same
+`harvest()` contract.
+
+**Implication:**
+- The "Google / Outlook OAuth modules are next" claim from the previous
+  observation is now half-shipped: Google is in, Outlook (Microsoft Graph)
+  remains a follow-up.
+- We now have three concrete harvesters proving the contract:
+  - `github`   real public-API
+  - `gcal`     real OAuth-protected API (playground token)
+  - `calendar` text-paste seam (always-on fallback)
+- Token-leak surface area is low: tokens are submitted per-request in the
+  POST body, never logged by the server, and expire automatically inside an
+  hour.
+
+**Action:**
+- Removed "Google Calendar harvester (OAuth)" from the "What's next" list
+  in `SUBMISSION.md`.
+- Added "Refresh-token storage + full OAuth flow (replace playground-token
+  shortcut)" as a P3 item in its place.
+
+---
+
+## 2026-05-16 — Live gcal harvest verified end-to-end via the UI
+
+**Context:** After shipping `src/harvesters/gcal.mjs`, ran it against the
+operator's real Google Calendar with a fresh OAuth-Playground access token.
+
+**Observation:**
+
+- Calendar API returned 6 real events in the default 48h-back/24h-ahead window.
+- Server processed the top 3 through Gemini (free-tier capacity available).
+- Three schema-valid Proof cards generated:
+
+| # | Title | Category | Theme | Time | Latency |
+|---|-------|----------|-------|------|---------|
+| 1 | Tax Payment Reminder | other | graphite | — | ~5s |
+| 2 | **AI for a Better PDX Build Challenge** | build | neon | 8h 30m | ~7s |
+| 3 | Focused Learning Block | learning | ocean | 1h | ~5s |
+
+- Card #2 is meta — it's the hackathon this very project is being submitted
+  to. Tags Gemini chose unprompted: `AI, hackathon, civic-tech, Portland`.
+- An admin task ("Make Tax Payment", `todo`) was correctly extracted from
+  card #1.
+- The remaining 3 raw signals (additional homework block, AI Tinkerers
+  meetup, Parent check-in) were rendered as un-processed signals in the UI
+  per the `process_max` cap.
+
+**Implication:** The full pipeline — real OAuth API → harvester → LLM
+contract → schema validation → UI render — works end-to-end against real
+user data. The architecture story ("source-agnostic capture, same contract
+for every input") is now demonstrated against three live providers:
+GitHub public events, Google Calendar v3, and pasted text.
+
+**Action:**
+- Live screenshot committed: `docs/screenshots/07-harvest-gcal-live.png`.
+- SUBMISSION.md updated with the live-harvest result.
+- The recursion ("Kinetic generates a Proof card *for* attending this
+  hackathon") is a free demo moment — recommend opening the live UI on
+  this exact card during judging.

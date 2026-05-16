@@ -57,7 +57,8 @@
 
       <div class="row tab-row" role="tablist">
         <button class="ghost tab active" data-tab="github" type="button">GitHub</button>
-        <button class="ghost tab" data-tab="calendar" type="button">Calendar</button>
+        <button class="ghost tab" data-tab="gcal" type="button">Google Cal <span class="live-dot" title="live API"></span></button>
+        <button class="ghost tab" data-tab="calendar" type="button">Paste cal</button>
       </div>
 
       <div class="tab-panel" data-panel="github">
@@ -67,6 +68,18 @@
         </label>
         <div class="row">
           <button id="gh-harvest" class="primary" type="button">Harvest recent activity →</button>
+        </div>
+      </div>
+
+      <div class="tab-panel hidden" data-panel="gcal">
+        <label class="lbl">
+          <span>Google access token <em>(scope: <code>calendar.readonly</code>; from <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noopener">OAuth Playground</a>)</em></span>
+          <input id="gcal-token" type="password" placeholder="ya29.…" autocomplete="off" />
+        </label>
+        <p class="muted small">Token lasts ~1h. Stored only in this tab; sent
+          to the server once per harvest and not persisted.</p>
+        <div class="row">
+          <button id="gcal-harvest" class="primary" type="button">Harvest from primary calendar →</button>
         </div>
       </div>
 

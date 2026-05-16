@@ -109,20 +109,31 @@ source that emits a `{ text, image_caption }` shape. v0 ships two:
   creates) and ghostwrites a Proof card for each. Tested live against
   `torvalds` from the venue.
   See [`docs/screenshots/05-harvest-github.png`](docs/screenshots/05-harvest-github.png).
-- **Calendar** (text seam, OAuth-free) — `POST /api/harvest/calendar`
-  → paste one event per line (with optional `[ISO]` timestamp prefix).
+- **Google Calendar** (real API v3, OAuth bearer token) — `POST /api/harvest/gcal`
+  → reads `/calendars/primary/events` over a configurable window (default
+  48h back / 24h ahead). Token from OAuth Playground for the demo; full
+  refresh-token flow is the P3 follow-up.
+  See [`docs/screenshots/07-harvest-gcal-live.png`](docs/screenshots/07-harvest-gcal-live.png)
+  — live harvest of 6 real events from the operator's calendar, with Gemini
+  generating 3 polished Proof cards (including a meta card for this hackathon
+  itself: "AI for a Better PDX Build Challenge" — `build`, neon, 8h 30m,
+  tagged AI / hackathon / civic-tech / Portland).
+- **Calendar (text seam)** (OAuth-free fallback) — `POST /api/harvest/calendar`
+  → paste one event per line with optional `[ISO]` timestamp prefix.
   See [`docs/screenshots/06-harvest-calendar.png`](docs/screenshots/06-harvest-calendar.png).
 
-Google Calendar and Microsoft Outlook (Graph) are the next harvesters to plug
-into this interface — the OAuth flow is the only missing piece. Rationale in
-[`docs/knowledge/shared-observations.md`](docs/knowledge/shared-observations.md).
+Microsoft Outlook (Graph) is the next harvester to plug into this interface
+— same `harvest()` contract, OAuth flow is the only missing piece. Rationale
+in [`docs/knowledge/shared-observations.md`](docs/knowledge/shared-observations.md).
 
 ---
 
 ## What's next (post-hackathon)
 
-- **Google Calendar harvester** (OAuth) into the existing `src/harvesters/` contract.
-- **Microsoft Graph (Outlook) harvester** (OAuth) — same contract.
+- **Replace the OAuth-Playground token shortcut** with a real OAuth flow
+  (GCP project + consent screen + refresh-token storage). The harvester
+  contract stays identical.
+- **Microsoft Graph (Outlook) harvester** (OAuth) — same `harvest()` contract.
 - **Slack export harvester** (read activity from `slack_export.json`).
 - Migrate from `new-product-discovery` composition to
   `node-web-saas-postgres` + a Supabase domain module (ADR-0001's P3 plan).

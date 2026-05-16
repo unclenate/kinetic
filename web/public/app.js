@@ -88,6 +88,7 @@ async function initCapture() {
   });
   $("#gh-harvest").addEventListener("click", () => onHarvest("github"));
   $("#cal-harvest").addEventListener("click", () => onHarvest("calendar"));
+  $("#gcal-harvest").addEventListener("click", () => onHarvest("gcal"));
 }
 
 function setHarvestStatus(msg, cls = "") {
@@ -104,6 +105,15 @@ async function onHarvest(source) {
     if (!username) { setHarvestStatus("Enter a GitHub username.", "err"); return; }
     body = { username, max: 5, process_max: 3 };
     $("#gh-harvest").disabled = true;
+  } else if (source === "gcal") {
+    const accessToken = $("#gcal-token").value.trim();
+    if (!accessToken) { setHarvestStatus("Paste a Google access token (ya29…).", "err"); return; }
+    if (accessToken.startsWith("4/")) {
+      setHarvestStatus("That looks like an auth code. Click 'Exchange authorization code for tokens' in OAuth Playground first, then paste the access_token (starts with 'ya29.').", "err");
+      return;
+    }
+    body = { accessToken, max: 10, process_max: 3 };
+    $("#gcal-harvest").disabled = true;
   } else {
     const text = $("#cal-text").value.trim();
     if (!text) { setHarvestStatus("Paste at least one calendar line.", "err"); return; }
@@ -134,6 +144,7 @@ async function onHarvest(source) {
   } finally {
     $("#gh-harvest").disabled = false;
     $("#cal-harvest").disabled = false;
+    $("#gcal-harvest").disabled = false;
   }
 }
 
