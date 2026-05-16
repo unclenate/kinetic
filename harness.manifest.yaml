@@ -1,0 +1,26 @@
+schemaVersion: 1
+project:
+  id: kinetic
+  name: Kinetic (AutoPortfolio)
+  maturity: prototype
+  criticality: low
+modules:
+  core:
+    - kernel/base
+  delivery:
+    - prototype
+  management:
+    - discovery-intake
+    - product-lite
+    - project-standard
+  agents:
+    - base
+overrides:
+  requiredArtifacts: []
+  disabledValidations:
+    - required-artifacts
+# Stack, architecture, and data modules are intentionally absent.
+# This composition is for the discovery phase before stack is chosen.
+# After completing platform/workflow/discovery-to-composition.md Step 6,
+# replace this file with the appropriate full composition from platform/compositions/
+# or create a project-specific harness.manifest.yaml with the selected modules.

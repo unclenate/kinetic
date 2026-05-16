@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+node_modules/
+dist/
+build/
+.next/
+.expo/
+*.log
+
+# Harness scratch (project-local memory)
+.remember/tmp/
+.remember/logs/
