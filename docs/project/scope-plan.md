@@ -33,12 +33,21 @@ request is in-scope or a change request.
 
 ## Out of Scope
 
-- User authentication / multi-tenant data — deferred to post-hackathon week 1.
-- Voice memo capture and transcription — deferred to v1 Should tier.
-- Native iOS / Android packaging — deferred to post-100-alpha-users milestone.
-- Team / organization mode — owned by a later consumer-validated phase.
-- GitHub / Slack integrations — Later tier; not in any phase prior to v1.
-- Performance-review / HR enterprise features — different product entirely.
+### Out of scope for v0.5 (5-day track)
+
+- Multi-tenant Supabase Auth signup flow — v0.5 ships with a single seeded operator user.
+- Voice memo capture and transcription — Should-tier; not on the 5-day path.
+- Native iOS / Android packaging — PWA covers all demo needs.
+- Editable Proof cards (free-text edit after generation).
+- Slack / Teams chat ingestion (workspace-admin required).
+- Meeting transcript ingestion (Zoom / Meet / Teams recordings).
+- Production OAuth verification (removes the "unverified app" warning) — operator's own account is fine.
+- First-class UIs for family / parenting / financial domains beyond the filter tab.
+
+### Out of scope for the product entirely (or deferred indefinitely)
+
+- Performance-review / HR enterprise features — different product.
+- Team / organization mode at v0.5 — distracts from consumer flywheel.
 
 ---
 
@@ -46,10 +55,15 @@ request is in-scope or a change request.
 
 | Phase | Goal | Owner | Exit Criteria | Target Date |
 | ----- | ---- | ----- | ------------- | ----------- |
-| P0 — Discovery | Capture concept, distill artifacts, pick composition | @unclenate | Problem, personas, requirements, MVP scope, release intent, ADR-0001 committed | 2026-05-16 |
-| P1 — Build (hackathon) | Ship v0 demo | @unclenate | All Must-tier FRs work end-to-end on the demo device | 2026-05-19 |
-| P2 — Hackathon judging | Demo + feedback capture | @unclenate | Judges have seen the demo; feedback logged in `docs/knowledge/shared-observations.md` | 2026-05-20 |
-| P3 — Alpha hardening | Migrate to full composition, add auth, feed view, regenerate | @unclenate | 5–25 friendly alpha users active | +30 days post-hackathon |
+| P0 — Discovery (v0) | Capture concept, distill artifacts, pick composition | @unclenate | Problem, personas, requirements, MVP scope, release intent, ADR-0001 committed | 2026-05-16 ✅ |
+| P1 — Build v0 (1-day track) | Ship v0 demo | @unclenate | All v0 Must-tier FRs work end-to-end on the demo device | 2026-05-16 ✅ |
+| P2 — v0 submission | 1-day track submission delivered | @unclenate | `SUBMISSION.md` delivered | 2026-05-16 ✅ |
+| **P3 — Discovery refresh (v0.5)** | New ADRs, refreshed product docs for 5-day track | @unclenate | ADR-0002/0003/0004 + refreshed problem/personas/requirements/MVP scope committed | 2026-05-16 ✅ (M6) |
+| P4 — Foundations (v0.5) | Real OAuth (Google + Microsoft) + Supabase persistence | @unclenate | M7 exit criteria met | 2026-05-17 |
+| P5 — Schema + harvesters (v0.5) | Domain field + 5 new harvesters | @unclenate | M8 + M9 exit criteria met | 2026-05-19 |
+| P6 — UX + polish (v0.5) | Multi-domain feed, privacy gate, dry runs | @unclenate | M10 + M11 exit criteria met | 2026-05-20 |
+| P7 — v0.5 submission | 5-day track submission delivered | @unclenate | M12 exit criteria met | 2026-05-21 |
+| P8 — Alpha hardening (post-hackathon) | Real Supabase Auth multi-tenant; native packaging; OAuth verification | @unclenate | 5–25 friendly alpha users active | +30 days post-2026-05-21 |
 
 ---
 

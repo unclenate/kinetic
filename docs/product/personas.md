@@ -3,15 +3,18 @@
 **Project:** [`docs/product/problem-statement.md`](./problem-statement.md)
 **Intake source:** [`docs/discovery/intake-questionnaire.md`](../discovery/intake-questionnaire.md) §3
 **Owner:** @unclenate
-**Last updated:** 2026-05-16
+**Last updated:** 2026-05-16 (v0.5 refresh — cross-domain context added)
 
 ---
 
-## Primary Persona — "Maya, the Mid-Career Engineer"
+## Primary Persona — "Maya, the Mid-Career Engineer (+parent)"
 
 **Role / context:** Senior software engineer, 6–10 years experience, at a Series B–C
 startup or mid-sized tech company. Ships code most days, leads design reviews, mentors
-juniors, occasionally talks to customers.
+juniors, occasionally talks to customers. **Lives a mixed-vendor work day** —
+Google Workspace at home, Microsoft 365 at the office, GitHub for code,
+Slack/Teams for chat. Off-hours she's juggling kids' homework blocks, family
+logistics, and the household financial running list.
 
 **Goals:**
 
@@ -25,12 +28,24 @@ juniors, occasionally talks to customers.
 - Promotion packets feel like reconstructing memory from Slack archeology.
 - "Brag docs" in Notion always start strong, then die after week two.
 - Recruiters keep pinging her with roles that don't match what she's actually been doing.
+- Her work life isn't on one platform. Half her meetings are on Google Cal,
+  half on Outlook; design docs live in Drive *and* OneDrive depending on the
+  client. Career-tracking tools assume a single-vendor stack she doesn't have.
+- The same calendar that has her customer call also has "Pickup Aiden from
+  soccer." She doesn't want a productivity tool that pulls everything into a
+  career feed; she wants it to *know the difference*.
 
 **Success criteria for this product:**
 
 - Captures something on most workdays without consciously "doing portfolio work."
 - Has a shareable link she'd actually send to a manager or recruiter.
 - The thing the AI writes sounds like her enough that she doesn't need to rewrite it.
+- Connects Google + Microsoft + GitHub in under 5 minutes total, never has
+  to reconnect during a typical week.
+- **Trusts the privacy gate completely.** Sees on day one that the parenting
+  and family captures never appear on her public Proof Feed. Confidence in
+  the domain classification is what turns Kinetic from "a career app I'm
+  cautious about" into "the app I keep on for everything."
 
 **Quoted voice:**
 
@@ -75,7 +90,12 @@ himself.
 
 - AI fabricating skills the user didn't actually demonstrate (credibility kill).
 - Shared cards inadvertently exposing confidential client / employer detail.
-- Cost drift on LLM calls per user.
+- **Domain-classification false positive** — a `personal`, `family`, or
+  `parenting` capture mis-labeled `business` ending up on a public Proof
+  Feed. The per-card confirmation step (ADR-0003) is a hard requirement
+  from this concern.
+- OAuth refresh-token loss or leak (encrypted at rest per ADR-0004).
+- Cost drift on LLM calls per user (more sources = more calls).
 
 ---
 
@@ -95,3 +115,4 @@ himself.
 | Date | Change | Reason | Owner |
 |------|--------|--------|-------|
 | 2026-05-16 | Initial personas drafted from concept doc | Discovery distillation | @unclenate |
+| 2026-05-16 | v0.5 refresh: Maya gains mixed-vendor / parenting context; operator concerns extended to include domain-classification false positives | 5-day-track scope expansion (ADR-0002) | @unclenate |

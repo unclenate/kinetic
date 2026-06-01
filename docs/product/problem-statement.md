@@ -2,7 +2,8 @@
 
 **Intake source:** [`docs/discovery/intake-questionnaire.md`](../discovery/intake-questionnaire.md) §2–3
 **Owner:** @unclenate
-**Last updated:** 2026-05-16
+**Last updated:** 2026-05-16 (v0.5 refresh for the 5-day track)
+**Supersedes:** v0 version (committed in 22fbbd8); see ADR-0002.
 
 ---
 
@@ -24,8 +25,8 @@ The work happens. The proof gets lost.
 
 ## Value Proposition
 
-If capturing daily proof of work becomes as low-friction as taking a screenshot or
-leaving a 10-second voice note, then:
+If capturing daily proof of work becomes as low-friction as connecting a calendar
+or pasting a GitHub username, then:
 
 - A continuously up-to-date "career truth layer" exists by default, not as a separate
   writing project.
@@ -33,6 +34,18 @@ leaving a 10-second voice note, then:
   rather than retroactive narrative.
 - Each shared proof becomes a viral artifact that introduces the product to new users
   in a high-trust context (someone they know sent it).
+
+**Important wedge clarification (v0.5):** Kinetic ingests signals from across
+the user's life — Google Calendar, Microsoft 365, Google Drive, OneDrive,
+GitHub, mail — *not just* their professional artifacts. Cross-domain capture
+makes the daily-use story credible (one app sees all of your day).
+
+But the **public-facing product, the share surface, and the marketing
+narrative all stay professional**. Non-business captures (`personal`,
+`family`, `parenting`, `financial`) are private utility for the user and
+seed eventual feature surfaces — they do not appear on the shared Proof
+Feed. The domain classification is the structural enforcement of this
+wedge; see [ADR-0003](../adr/ADR-0003-two-dimensional-categorization.md).
 
 ---
 
@@ -79,8 +92,12 @@ hypothesis is wrong and the loop needs to be rethought.
 
 | Constraint | Source |
 |------------|--------|
-| Hackathon timebox (~72h) for v0 | PSU hackathon schedule |
+| 5-day timebox for v0.5 (submission 2026-05-21) | 5-day hackathon track |
 | Live demo must survive flaky conference Wi-Fi | Demo risk management |
 | No retention of raw audio after transcription; no PII beyond user email | Privacy hygiene |
-| Solo build for hackathon (1 engineer) | Team size |
+| Encrypted-at-rest OAuth refresh tokens; no plaintext token logging | Security baseline for real OAuth (ADR-0004) |
+| Non-business captures are never public by default; per-card opt-in required | Privacy contract from ADR-0003 |
+| Solo build (1 engineer) | Team size |
 | LLM vendor dependency (Gemini primary, Claude fallback) | External API |
+| Supabase free-tier limits (500MB DB, 1GB storage) | Vendor tier |
+| Google + Microsoft OAuth consent screens "unverified" until reviewed | Demo runs on operator's own account; production exposure waits |
