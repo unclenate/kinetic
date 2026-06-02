@@ -3,7 +3,7 @@
 **Used by:** `src/providers/gemini.mjs`, `src/providers/claude.mjs`
 **Schema:** `schemas/kinetic-output.schema.json`
 **Owner:** @unclenate
-**Last updated:** 2026-05-16
+**Last updated:** 2026-06-02 (v0.5 — two-dimensional classification, ADR-0003)
 
 This is the canonical prompt fed to any LLM provider as a Kinetic capture is processed.
 Provider modules inline the schema at runtime so the model receives a fully closed contract.
@@ -43,9 +43,41 @@ ghostwriter who only says what the input supports.
 - `tech_tags` must be either explicitly named in the input or directly inferable from
   the image caption. When in doubt, omit the tag.
 
-## Category selection
+## Classification — two independent axes
 
-Choose `category` from this closed set, picking the single best match:
+Every capture is classified on two **independent** closed enums: `domain`
+(what part of life) and `activity_type` (what kind of work). Pick exactly one
+value for each.
+
+### Domain selection (`domain`, required)
+
+Choose the single best-fit life domain:
+
+- `business` — work that contributes to the user's professional standing:
+  code shipped, customer calls, designs, decisions, learning that supports the
+  career, infrastructure / tooling. **Default when no non-work signal is present.**
+- `personal` — health, hobbies, friends, self-development outside the career
+  (doctor visits, workouts, reading non-career material).
+- `family` — household, partner, extended family, vacations, anniversaries;
+  non-child family logistics.
+- `parenting` — specifically child-related: school, homework, a child's medical
+  or activities, parent–child time.
+- `financial` — taxes, bills, investments, household money management.
+
+**Specificity rule** when more than one could apply: `financial` wins when money
+is the dominant verb (e.g. *paying* the mortgage); otherwise `parenting` is more
+specific than `family`. There is no `null`/`unknown` — pick the most likely
+domain even when evidence is thin, while keeping the narrative honest about
+limited signal.
+
+**Privacy note (do not state this in output, just be aware):** only
+`domain: "business"` cards are default-eligible for the public Proof Feed. A
+wrong `business` label on a private capture is a trust incident — when a capture
+is clearly non-work, do not default it to `business`.
+
+### Activity-type selection (`activity_type`, required)
+
+Renamed from v0 `category`. Choose from this closed set, single best match:
 
 - `build` — shipped or implemented something new
 - `fix` — diagnosed and resolved a problem
@@ -59,13 +91,15 @@ Choose `category` from this closed set, picking the single best match:
 
 ## Visual theme selection
 
-Choose `visual_theme` based on the emotional register of the capture:
+Choose `visual_theme` based on the emotional register of the capture. The
+`activity_type` default below is the primary signal; the `domain` defaults are a
+gentle fallback when activity tone is neutral.
 
 - `midnight` — late-night debug / focus work (default for `fix`)
-- `graphite` — calm decision or architecture work (default for `decision`, `design`)
+- `graphite` — calm decision or architecture work (default for `decision`, `design`; fallback for `financial`)
 - `neon`     — high-energy ship / feature launch (default for `build`)
-- `warm`     — collaborative or mentoring work (default for `collab`)
-- `ocean`    — research, learning, or open-ended exploration (default for `learning`, `research`)
+- `warm`     — collaborative or relational work (default for `collab`; fallback for `family`, `parenting`)
+- `ocean`    — research, learning, or open-ended exploration (default for `learning`, `research`; fallback for `personal`)
 
 For `infra` or `other`, choose whichever best matches the tone.
 
@@ -117,7 +151,8 @@ image_caption: "Screenshot of a 401 Unauthorized response in a terminal, then a
     "tech_tags": ["webhooks", "http-auth", "api-integration", "curl"],
     "time_to_resolution_minutes": 180,
     "impact_metric": null,
-    "category": "fix",
+    "domain": "business",
+    "activity_type": "fix",
     "visual_theme": "midnight",
     "narrative": "Spent the afternoon tracing a 401 Unauthorized response on outbound webhooks. Isolated the cause to malformed auth headers and applied a one-line fix. Verified with curl; ready to promote to staging."
   }

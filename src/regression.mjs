@@ -1,7 +1,11 @@
 // src/regression.mjs
-// Run the M1 regression set against the selected provider and measure schema
-// validity. The M1 milestone exits when ≥9 of 10 inputs produce a schema-valid
-// output for the chosen provider.
+// Run the regression set against the selected provider and measure both schema
+// validity and domain-classification correctness (ADR-0003).
+//
+// M8 exit gate (the v0.5 contract): for the chosen provider,
+//   - ≥90% of inputs produce schema-valid output, AND
+//   - ≥95% of inputs get the correct `domain`.
+// `activity_type` match remains informational (not a gate), as it was in M1.
 //
 // Usage:
 //   node src/regression.mjs                         # mock provider (default)
@@ -42,7 +46,7 @@ async function main() {
   const schema = await loadKineticSchema();
   const inputs = await loadRegressionInputs();
 
-  console.log(`\nKinetic — M1 regression`);
+  console.log(`\nKinetic — M8 regression (domain × activity_type)`);
   console.log(`Provider: ${providerName}`);
   console.log(`Inputs:   ${inputs.length}`);
   console.log(`Schema:   schemas/kinetic-output.schema.json`);
@@ -59,35 +63,57 @@ async function main() {
     }
     const elapsed = Date.now() - t0;
     const v = output ? validate(output, schema) : { valid: false, errors: [String(err?.message || err)] };
-    const categoryActual = output?.proof_card?.category;
-    const categoryExpected = input.expected_category;
-    const categoryHit = categoryActual === categoryExpected;
-    results.push({ id: input.id, valid: v.valid, errors: v.errors, elapsed, categoryActual, categoryExpected, categoryHit });
+
+    const domainActual = output?.proof_card?.domain;
+    const domainExpected = input.expected_domain;
+    const domainHit = domainActual === domainExpected;
+
+    const activityActual = output?.proof_card?.activity_type;
+    const activityExpected = input.expected_activity_type;
+    const activityHit = activityActual === activityExpected;
+
+    results.push({ id: input.id, valid: v.valid, errors: v.errors, elapsed, domainActual, domainExpected, domainHit, activityActual, activityExpected, activityHit });
 
     const status = v.valid ? "✓ valid  " : "✗ INVALID";
-    const catHint = categoryActual
-      ? ` cat=${categoryActual}${categoryHit ? "" : ` (expected ${categoryExpected})`}`
+    const domHint = domainActual
+      ? ` dom=${domainActual}${domainHit ? "" : ` (expected ${domainExpected})`}`
       : "";
-    console.log(`${status}  ${input.id.padEnd(22)} ${String(elapsed).padStart(5)}ms${catHint}`);
+    const actHint = activityActual
+      ? ` act=${activityActual}${activityHit ? "" : ` (expected ${activityExpected})`}`
+      : "";
+    console.log(`${status}  ${input.id.padEnd(24)} ${String(elapsed).padStart(5)}ms${domHint}${actHint}`);
     if (!v.valid) {
       for (const e of v.errors.slice(0, 5)) console.log(`           - ${e}`);
     }
   }
 
+  const total = results.length;
   const validCount = results.filter((r) => r.valid).length;
-  const catHitCount = results.filter((r) => r.categoryHit).length;
+  const domainHitCount = results.filter((r) => r.domainHit).length;
+  const activityHitCount = results.filter((r) => r.activityHit).length;
+
+  const schemaPct = (validCount / total) * 100;
+  const domainPct = (domainHitCount / total) * 100;
+
+  const SCHEMA_GATE = 90;
+  const DOMAIN_GATE = 95;
 
   console.log("");
-  console.log(`Schema-valid:     ${fmtPct(validCount, results.length)}`);
-  console.log(`Category match:   ${fmtPct(catHitCount, results.length)}  (informational — not a gate)`);
-  console.log(`M1 exit target:   ≥9 of 10 schema-valid`);
+  console.log(`Schema-valid:     ${fmtPct(validCount, total)}`);
+  console.log(`Domain-correct:   ${fmtPct(domainHitCount, total)}`);
+  console.log(`Activity match:   ${fmtPct(activityHitCount, total)}  (informational — not a gate)`);
+  console.log(`M8 exit target:   ≥${SCHEMA_GATE}% schema-valid AND ≥${DOMAIN_GATE}% domain-correct`);
   console.log("");
 
-  if (validCount >= 9) {
-    console.log(`✓ M1 exit criterion MET for provider "${providerName}"`);
+  const pass = schemaPct >= SCHEMA_GATE && domainPct >= DOMAIN_GATE;
+  if (pass) {
+    console.log(`✓ M8 exit criterion MET for provider "${providerName}"`);
     process.exit(0);
   } else {
-    console.log(`✗ M1 exit criterion NOT met for provider "${providerName}"`);
+    const why = [];
+    if (schemaPct < SCHEMA_GATE) why.push(`schema-valid ${schemaPct.toFixed(1)}% < ${SCHEMA_GATE}%`);
+    if (domainPct < DOMAIN_GATE) why.push(`domain-correct ${domainPct.toFixed(1)}% < ${DOMAIN_GATE}%`);
+    console.log(`✗ M8 exit criterion NOT met for provider "${providerName}" (${why.join("; ")})`);
     process.exit(1);
   }
 }

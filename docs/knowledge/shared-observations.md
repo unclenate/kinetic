@@ -207,3 +207,53 @@ GitHub public events, Google Calendar v3, and pasted text.
 - The recursion ("Kinetic generates a Proof card *for* attending this
   hackathon") is a free demo moment — recommend opening the live UI on
   this exact card during judging.
+
+---
+
+## 2026-06-02 — M8: schema v0.5 migration (`category` → `domain` × `activity_type`)
+
+**Context:** First v0.5 (5-day-track) build milestone landed. ADR-0003's
+two-dimensional contract is now in code. Built test-first against the existing
+zero-dep harness (`validate.mjs --selftest`, `regression.mjs`).
+
+**Migration summary (what changed and why it's safe):**
+
+- **Schema** (`schemas/kinetic-output.schema.json`): `category` renamed to
+  `activity_type`; new **required** `domain` enum
+  (`business|personal|family|financial|parenting`). Because `proof_card` has
+  `additionalProperties: false`, any output still emitting the old `category`
+  key is rejected — the rename is self-policing. The validator self-test now
+  asserts a missing `domain` and an out-of-enum `domain` are both rejected.
+- **Mock provider** (`src/providers/mock.mjs`): added `classifyDomain()` with
+  ordered heuristics (financial → parenting → family → personal → default
+  `business`), encoding ADR-0003's specificity rule. Output key renamed.
+- **Regression set** grew 10 → **20** fixtures, ≥2 per domain, each carrying
+  `expected_domain` + `expected_activity_type` (was `expected_category`).
+- **Runner** now gates on **≥90% schema-valid AND ≥95% domain-correct**;
+  `activity_type` match stays informational.
+- **Prompt, UI** (`app.js` domain + activity pills, `style.css`), and
+  `tests/README.md` updated in lockstep. Gemini/Claude provider code needed no
+  change — they inline the schema + prompt, so they adapt automatically.
+
+**Measured (mock, 2026-06-02):** Schema-valid 20/20, Domain-correct 20/20,
+Activity match 18/20.
+
+**Observation / watch items:**
+
+- The mock's `activity_type` classifier trails the hand labels on two
+  *relational* captures — "helped my daughter with homework" and "coached the
+  kids' soccer practice" are conceptually `collab` but the keyword mock returns
+  `other` ("helped"/"coached" aren't in the lexicon). Left as-is on purpose:
+  the fixtures hold the honest label for real-LLM runs; contorting the wording
+  to flatter the mock would weaken the test. Domain (the gated axis) is 20/20.
+- **Ambiguous-domain default = `business`.** A capture with no life-domain
+  signal (e.g. reg-10 "stuff today was hard") defaults to `business`, which is
+  the *permissive* side of the privacy gate. The safety net holds today because
+  cards are `is_public: false` by default and sharing is an explicit user
+  action — but once auto-publish or bulk-share exists, an ambiguous capture
+  defaulting to `business` could skip the non-business confirmation step. Decide
+  before M10 whether the ambiguous default should flip to a private domain.
+- **Real-provider domain-correctness is unmeasured.** The 95% gate has only been
+  proven on the deterministic mock (which is partly circular — same author wrote
+  the fixtures and the classifier). The meaningful number is Claude/Gemini on
+  these 20 fixtures; that run is still gated on API keys and is the M11 task.

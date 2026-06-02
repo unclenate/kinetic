@@ -33,7 +33,8 @@ function renderProofCard(card) {
   return `
     <div class="banner theme-${escapeAttr(card.visual_theme)}">
       <div class="meta-row">
-        <span class="category-pill">${escapeHtml(card.category)}</span>
+        <span class="meta-pill domain-pill">${escapeHtml(card.domain)}</span>
+        <span class="meta-pill">${escapeHtml(card.activity_type)}</span>
         <span>${escapeHtml(card.visual_theme)}</span>
       </div>
       <h3>${escapeHtml(card.title)}</h3>

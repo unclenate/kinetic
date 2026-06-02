@@ -150,12 +150,16 @@ button:disabled { opacity: 0.6; cursor: progress; }
   color: rgba(230, 233, 239, 0.7);
   margin-bottom: 12px;
 }
-.proof-card .category-pill {
+.proof-card .meta-pill {
   padding: 4px 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.16);
   font-weight: 600;
+}
+.proof-card .domain-pill {
+  background: rgba(120, 170, 255, 0.18);
+  border-color: rgba(120, 170, 255, 0.35);
 }
 
 .proof-card h3 {

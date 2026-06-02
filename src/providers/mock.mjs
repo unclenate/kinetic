@@ -48,6 +48,16 @@ const CATEGORY_HINTS = [
   [/read|paper|studied|learn|understand/i,          "learning"],
 ];
 
+// Domain classification (ADR-0003). Order encodes the specificity rule:
+// financial (money is the dominant verb) > parenting > family > personal,
+// with `business` as the default when no life-domain signal is present.
+const DOMAIN_HINTS = [
+  [/\btax(es)?\b|\b401k\b|mortgage|\binvoice\b|\bbudget\b|refinanc|insurance|\bbank\b|investment|\bbonds?\b|index fund|rebalanc|\bbill\b|expense/i, "financial"],
+  [/\b(son|daughter|kid|kids|child|children|toddler)\b|homework|pediatric|\bschool\b|daycare|soccer practice|parent-teacher|\bPTA\b/i, "parenting"],
+  [/anniversary|sprinkler|backyard|hardware store|\brestaurant\b|\bsitter\b|\bwife\b|\bhusband\b|\bpartner\b|\bspouse\b|household|\bvacation\b|\blawn\b|grocer|in-laws/i, "family"],
+  [/\bphysical\b|bloodwork|\bclinic\b|\bdoctor\b|\bdentist\b|\bgym\b|deadlift|pottery class|\bran my\b|\b10k\b|\bnovel\b|workout|therapy|\bhike\b/i, "personal"],
+];
+
 const THEME_FOR_CATEGORY = {
   fix: "midnight",
   build: "neon",
@@ -71,13 +81,26 @@ function id(prefix, seed) {
 }
 
 /**
- * Classify the capture into one of the schema's categories.
+ * Classify the capture into one of the schema's activity types.
  */
 function classify(text) {
   for (const [re, cat] of CATEGORY_HINTS) {
     if (re.test(text)) return cat;
   }
   return "other";
+}
+
+/**
+ * Classify the capture into one of the schema's life domains (ADR-0003).
+ * Defaults to `business` when no non-work signal is present — Kinetic is a
+ * professional-first tool, so an unsignaled capture is treated as work.
+ * (Ambiguous-default safety is tracked in shared-observations.md.)
+ */
+function classifyDomain(text) {
+  for (const [re, domain] of DOMAIN_HINTS) {
+    if (re.test(text)) return domain;
+  }
+  return "business";
 }
 
 function extractTags(text) {
@@ -148,6 +171,7 @@ export async function process(input) {
   const caption = (input.image_caption || "").trim();
   const seed = `${text}|${caption}`;
   const category = classify(text + " " + caption);
+  const domain = classifyDomain(text + " " + caption);
   const tags = extractTags(text + " " + caption);
   const minutes = extractMinutes(text);
   const theme = THEME_FOR_CATEGORY[category] || "graphite";
@@ -192,7 +216,8 @@ export async function process(input) {
       tech_tags: tags,
       time_to_resolution_minutes: minutes,
       impact_metric: null, // mock never invents impact — matches anti-fabrication rule
-      category,
+      domain,
+      activity_type: category,
       visual_theme: theme,
       narrative,
     },

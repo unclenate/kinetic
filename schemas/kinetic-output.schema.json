@@ -29,7 +29,7 @@
       "type": "object",
       "description": "A polished, shareable Proof-of-Skill card derived from the capture.",
       "additionalProperties": false,
-      "required": ["id", "title", "summary", "tech_tags", "category", "visual_theme", "narrative", "time_to_resolution_minutes", "impact_metric"],
+      "required": ["id", "title", "summary", "tech_tags", "domain", "activity_type", "visual_theme", "narrative", "time_to_resolution_minutes", "impact_metric"],
       "properties": {
         "id":      { "type": "string", "pattern": "^proof_[a-z0-9]{6,12}$" },
         "title":   { "type": "string", "minLength": 4, "maxLength": 80 },
@@ -50,7 +50,8 @@
           "maxLength": 120,
           "description": "A short, source-grounded impact phrase. Null when the capture does not credibly imply impact."
         },
-        "category":     { "type": "string", "enum": ["build", "fix", "design", "decision", "learning", "collab", "infra", "research", "other"] },
+        "domain":        { "type": "string", "enum": ["business", "personal", "family", "financial", "parenting"], "description": "Life domain of the capture. Drives the privacy gate: only `business` cards are default-eligible for the public Proof Feed (ADR-0003)." },
+        "activity_type": { "type": "string", "enum": ["build", "fix", "design", "decision", "learning", "collab", "infra", "research", "other"], "description": "Kind of work, independent of domain. Renamed from v0 `category` (ADR-0003)." },
         "visual_theme": { "type": "string", "enum": ["midnight", "graphite", "neon", "warm", "ocean"] },
         "narrative":    { "type": "string", "minLength": 40, "maxLength": 600 }
       }

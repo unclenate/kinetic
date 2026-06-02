@@ -125,9 +125,12 @@ export async function loadKineticSchema() {
 }
 
 // ---- Self-test ----
-// `node src/validate.mjs --selftest` runs a tiny inline test:
+// `node src/validate.mjs --selftest` runs a tiny inline test of the v0.5
+// two-dimensional contract (ADR-0003: domain × activity_type):
 //  - one schema-valid sample passes
-//  - one obviously-invalid sample fails with the expected error
+//  - one obviously-invalid sample fails
+//  - a sample missing the required `domain` is rejected
+//  - a sample with an out-of-enum `domain` is rejected
 async function selfTest() {
   const schema = await loadKineticSchema();
   const valid = {
@@ -141,7 +144,8 @@ async function selfTest() {
       tech_tags: ["self-test"],
       time_to_resolution_minutes: null,
       impact_metric: null,
-      category: "other",
+      domain: "business",
+      activity_type: "other",
       visual_theme: "graphite",
       narrative: "This narrative exists only to make the self-test pass. It is at least forty characters long.",
     },
@@ -155,14 +159,23 @@ async function selfTest() {
       tech_tags: ["ok"],
       time_to_resolution_minutes: -1,
       impact_metric: null,
-      category: "made-up",
+      domain: "nonsense",
+      activity_type: "made-up",
       visual_theme: "rainbow",
       narrative: "short",
     },
   };
+  // Valid in every respect except the required `domain` is absent.
+  const missingDomain = JSON.parse(JSON.stringify(valid));
+  delete missingDomain.proof_card.domain;
+  // Valid in every respect except `domain` is outside the closed enum.
+  const badDomain = JSON.parse(JSON.stringify(valid));
+  badDomain.proof_card.domain = "work-ish";
 
   const a = validate(valid, schema);
   const b = validate(invalid, schema);
+  const c = validate(missingDomain, schema);
+  const d = validate(badDomain, schema);
 
   if (!a.valid) {
     console.error("✗ self-test: valid sample failed unexpectedly");
@@ -173,9 +186,19 @@ async function selfTest() {
     console.error("✗ self-test: invalid sample passed unexpectedly");
     process.exit(1);
   }
+  if (c.valid) {
+    console.error("✗ self-test: sample missing required `domain` passed unexpectedly");
+    process.exit(1);
+  }
+  if (d.valid) {
+    console.error("✗ self-test: sample with out-of-enum `domain` passed unexpectedly");
+    process.exit(1);
+  }
   console.log("✓ validator self-test passed");
   console.log("  valid sample → ok");
   console.log(`  invalid sample → rejected with ${b.errors.length} errors (expected ≥1)`);
+  console.log("  missing domain → rejected");
+  console.log("  bad domain enum → rejected");
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
