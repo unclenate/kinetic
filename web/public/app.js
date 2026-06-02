@@ -13,6 +13,9 @@ const SAMPLE = {
 };
 
 let currentCardId = null;
+let currentDomain = null;
+let pendingShareId = null;
+const DOMAIN_LABELS = { business: "Business", personal: "Personal", family: "Family", financial: "Financial", parenting: "Parenting" };
 
 function isCapturePage() { return !!document.getElementById("submit"); }
 function isProofPage()   { return typeof window.CARD !== "undefined" && window.CARD; }
@@ -66,6 +69,8 @@ async function initCapture() {
   try {
     const h = await fetch("/health").then((r) => r.json());
     $("#provider-pill").textContent = `provider: ${h.provider}`;
+    const storePill = $("#store-pill");
+    if (storePill) storePill.textContent = `store: ${h.backend}`;
   } catch {
     $("#provider-pill").textContent = "provider: ?";
   }
@@ -74,7 +79,23 @@ async function initCapture() {
     $("#caption").value = SAMPLE.caption;
   });
   $("#submit").addEventListener("click", onSubmit);
-  $("#share").addEventListener("click", onShare);
+  $("#share").addEventListener("click", () => requestShare(currentCardId, currentDomain));
+
+  // Share-confirmation modal (privacy gate for non-business cards)
+  $("#share-confirm").addEventListener("click", confirmShare);
+  $("#share-cancel").addEventListener("click", closeShareModal);
+
+  // Feed domain filter tabs
+  document.querySelectorAll("#domain-tabs .tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#domain-tabs .tab").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      applyDomainFilter(btn.dataset.domain);
+    });
+  });
+
+  initConnections();
+  loadFeed();
 
   // Harvest panel: tab switching + handlers
   document.querySelectorAll(".tab").forEach((btn) => {
@@ -140,6 +161,7 @@ async function onHarvest(source) {
       "ok"
     );
     renderHarvestResults(json);
+    loadFeed();
   } catch (e) {
     setHarvestStatus(`Network error: ${e.message}`, "err");
   } finally {
@@ -207,6 +229,7 @@ async function onSubmit() {
     const elapsed = Math.round(performance.now() - t0);
     setStatus(`✓ Generated in ${elapsed}ms via ${json.provider}`, "ok");
     currentCardId = json.id;
+    currentDomain = json.output.proof_card.domain;
     $("#proof").innerHTML = renderProofCard(json.output.proof_card);
     $("#admin").innerHTML = renderAdminTasks(json.output.admin_tasks);
     $("#result").classList.remove("hidden");
@@ -214,6 +237,7 @@ async function onSubmit() {
     shareUrl.textContent = "";
     shareUrl.removeAttribute("href");
     $("#result").scrollIntoView({ behavior: "smooth", block: "start" });
+    loadFeed();
   } catch (e) {
     setStatus(`Network error: ${e.message}`, "err");
   } finally {
@@ -221,28 +245,126 @@ async function onSubmit() {
   }
 }
 
-async function onShare() {
-  if (!currentCardId) return;
-  $("#share").disabled = true;
+// Privacy gate (ADR-0003): non-business cards must pass through an explicit,
+// un-skippable confirmation modal naming the domain before going public.
+function requestShare(id, domain) {
+  if (!id) return;
+  if (domain && domain !== "business") {
+    pendingShareId = id;
+    const label = DOMAIN_LABELS[domain] || domain;
+    $("#share-modal-body").textContent =
+      `This is a ${label.toLowerCase()} capture, not a business one. Sharing makes it ` +
+      `visible to anyone with the link. Kinetic's public feed is meant for professional ` +
+      `proof — continue anyway?`;
+    $("#share-modal").classList.remove("hidden");
+    return;
+  }
+  doShare(id);
+}
+
+function closeShareModal() {
+  pendingShareId = null;
+  $("#share-modal").classList.add("hidden");
+}
+
+function confirmShare() {
+  const id = pendingShareId;
+  closeShareModal();
+  if (id) doShare(id);
+}
+
+async function doShare(id) {
   try {
-    const res = await fetch(`/api/share/${currentCardId}`, { method: "POST" });
+    const res = await fetch(`/api/share/${id}`, { method: "POST" });
     const json = await res.json();
     if (!res.ok) {
       setStatus(`Share failed: ${json.error}`, "err");
       return;
     }
-    const shareUrl = $("#share-url");
-    shareUrl.textContent = json.url;
-    shareUrl.href = json.url;
+    if (id === currentCardId) {
+      const shareUrl = $("#share-url");
+      shareUrl.textContent = json.url;
+      shareUrl.href = json.url;
+    }
     try {
       await navigator.clipboard.writeText(json.url);
       setStatus("✓ Public link copied to clipboard", "ok");
     } catch {
       setStatus("✓ Public link generated", "ok");
     }
-  } finally {
-    $("#share").disabled = false;
+    loadFeed();
+  } catch (e) {
+    setStatus(`Share failed: ${e.message}`, "err");
   }
+}
+
+// ---------- connections header ----------
+
+async function initConnections() {
+  const el = $("#connections");
+  if (!el) return;
+  let data;
+  try {
+    data = await fetch("/api/connections").then((r) => r.json());
+  } catch {
+    el.innerHTML = "";
+    return;
+  }
+  const providers = data.providers || {};
+  const order = ["google", "microsoft", "github"];
+  el.innerHTML = order.map((name) => {
+    const p = providers[name] || {};
+    if (!p.configured) {
+      return `<span class="conn-chip off" title="not configured">${escapeHtml(name)} · off</span>`;
+    }
+    if (p.connected) {
+      return `<span class="conn-chip on">${escapeHtml(name)} · connected</span>`;
+    }
+    if (name === "github") {
+      return `<span class="conn-chip">${escapeHtml(name)} · public</span>`;
+    }
+    return `<a class="conn-chip connect" href="/oauth/${escapeAttr(name)}/start">${escapeHtml(name)} · connect →</a>`;
+  }).join("");
+}
+
+// ---------- proof feed ----------
+
+async function loadFeed() {
+  const feed = $("#feed");
+  if (!feed) return;
+  let data;
+  try {
+    data = await fetch("/api/cards").then((r) => r.json());
+  } catch {
+    return;
+  }
+  const cards = data.cards || [];
+  $("#feed-empty").classList.toggle("hidden", cards.length > 0);
+  feed.innerHTML = cards.map(renderFeedItem).join("");
+  // Wire per-card share buttons.
+  feed.querySelectorAll("[data-share-id]").forEach((btn) => {
+    btn.addEventListener("click", () => requestShare(btn.dataset.shareId, btn.dataset.shareDomain));
+  });
+  // Re-apply the active filter to the freshly rendered list.
+  const active = document.querySelector("#domain-tabs .tab.active");
+  applyDomainFilter(active ? active.dataset.domain : "all");
+}
+
+function renderFeedItem(c) {
+  const shareBtn = c.isPublic
+    ? `<span class="feed-public">● public</span>`
+    : `<button class="ghost small" type="button" data-share-id="${escapeAttr(c.id)}" data-share-domain="${escapeAttr(c.domain)}">Share →</button>`;
+  return `<div class="feed-item" data-domain="${escapeAttr(c.domain)}">
+    <div class="card proof-card">${renderProofCard(c.output.proof_card)}</div>
+    <div class="feed-item-actions">${shareBtn}</div>
+  </div>`;
+}
+
+function applyDomainFilter(domain) {
+  document.querySelectorAll("#feed .feed-item").forEach((item) => {
+    const show = domain === "all" || item.dataset.domain === domain;
+    item.classList.toggle("hidden", !show);
+  });
 }
 
 // ---------- proof share page ----------

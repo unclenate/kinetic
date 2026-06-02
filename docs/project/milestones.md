@@ -19,7 +19,7 @@ exit criteria so "done" is unambiguous.
 | M7 — Foundations (OAuth + Supabase) | 2026-05-17 | @unclenate | Active | OAuth flow (PKCE), AES-256-GCM token crypto, Supabase PostgREST layer, pluggable store, and server routes all built + 18 offline tests green; demo still runs on memory. **Operator credential setup + live verification (real consent, ciphertext-in-DB, refresh-on-expiry, restart) pending.** |
 | M8 — Schema v0.5 + regression refresh | 2026-05-18 | @unclenate | Done | `category`→`activity_type` rename; new `domain` enum; regression set grown to 20 fixtures (≥2/domain). Mock: 20/20 schema-valid, 20/20 domain-correct. Real-provider run pending API keys (M11). |
 | M9 — New harvesters | 2026-05-19 | @unclenate | Active | 5 modules built on the `harvest()` contract + 12 offline tests (stubbed `fetch`) green. **Live verification against real accounts is gated on M7 OAuth tokens.** |
-| M10 — Multi-domain UX + privacy gate | 2026-05-20 | @unclenate | Planned | Feed view; domain filter tabs; per-card confirmation modal for non-business shares; multi-account OAuth UI. |
+| M10 — Multi-domain UX + privacy gate | 2026-05-20 | @unclenate | Active | Feed (`/api/cards` + reverse-chron render), domain filter tabs, un-skippable non-business share-confirmation modal, connection-status header, and `tools/privacy-audit.mjs` all built; backend 4/4 offline tests + endpoints verified live. **Live OAuth-connected state needs M7 creds; DOM render not browser-captured this session (MCP profile lock).** |
 | M11 — Polish + 5-day-track dry runs | 2026-05-21 | @unclenate | Planned | 3 consecutive clean dry runs; runbook update for the 5-source flow; regression numbers re-recorded post-prompt-update. |
 | M12 — Hackathon submission (5-day track) | 2026-05-21 | @unclenate | Planned | `SUBMISSION.md` v0.5 section delivered; demo URL or runbook reachable by judges. |
 
@@ -310,16 +310,30 @@ status in the header.
 
 **Exit criteria:**
 
-- [ ] Feed view at `/` shows cards from Supabase in reverse-chronological
-      order
-- [ ] Domain filter tabs: `All / Business / Personal / Family / Financial / Parenting`
-- [ ] Tab click filters the rendered cards client-side in <100ms
-- [ ] "Share publicly" on a non-business card shows a confirmation modal
-      naming the domain; modal cannot be skipped
-- [ ] Header shows OAuth connection status for Google / Microsoft / GitHub
-      (connected vs. disconnected); click to start or refresh OAuth
-- [ ] Privacy-audit script: `node tools/privacy-audit.mjs` lists all
-      public cards and asserts `domain == "business"` for every one
+- [x] Feed view at `/` shows cards from the store in reverse-chronological
+      order (`GET /api/cards` → `store.listCards()`; memory + supabase backends)
+- [x] Domain filter tabs: `All / Business / Personal / Family / Financial / Parenting`
+- [x] Tab click filters the rendered cards client-side (instant `classList`
+      toggle on `data-domain`, well under 100ms)
+- [x] "Share publicly" on a non-business card shows a confirmation modal
+      naming the domain; modal cannot be skipped (`requestShare()` routes
+      non-business through `#share-modal`; business shares directly)
+- [x] Header shows OAuth connection status for Google / Microsoft / GitHub
+      (`GET /api/connections`); disconnected providers link to
+      `/oauth/:provider/start`. **The "connected" state needs M7 creds + a
+      stored token to light up; offline it shows connect/off.**
+- [x] Privacy-audit script: `node tools/privacy-audit.mjs` lists all public
+      cards and asserts `domain == "business"`; pure `auditPublicCards()` is
+      unit-tested (`tests/m10.test.mjs`)
+- [ ] **Live visual pass:** the feed/filter/modal DOM was not browser-captured
+      this session (chrome-devtools MCP held a stale profile lock). Verified
+      statically (JS parses, all selectors resolve) + via the endpoints. A
+      clean-browser eyeball is the remaining check.
+
+**Ambiguous-domain default — resolved:** when a capture has no life-domain
+signal, the classifier defaults to `business` (operator decision, 2026-06-02).
+Safe under the current explicit-share model; revisit if auto-publish/bulk-share
+is added (the risk noted in shared-observations stands as a watch item).
 
 ---
 

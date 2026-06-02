@@ -143,6 +143,36 @@ async function handleCard(_req, res, id) {
   send(res, 200, rec);
 }
 
+async function handleCardList(_req, res) {
+  const cards = await store.listCards();
+  // Lightweight feed shape: surface domain/activity for client-side filtering.
+  const feed = cards.map((c) => ({
+    id: c.id,
+    createdAt: c.createdAt,
+    isPublic: !!c.isPublic,
+    domain: c.output?.proof_card?.domain || "business",
+    activity_type: c.output?.proof_card?.activity_type || "other",
+    output: c.output,
+  }));
+  send(res, 200, { count: feed.length, cards: feed });
+}
+
+async function handleConnections(_req, res) {
+  const out = {};
+  let hasToken = null;
+  if (supabaseConfigured()) {
+    ({ hasToken } = await import("../src/oauth/token-store.mjs"));
+  }
+  for (const name of ["google", "microsoft"]) {
+    const configured = oauthConfigured(name);
+    const connected = configured && hasToken ? await hasToken(name) : false;
+    out[name] = { configured, connected };
+  }
+  // GitHub uses public events / PAT in v0.5 — no OAuth handshake.
+  out.github = { configured: true, connected: false, note: "public events; PAT optional" };
+  send(res, 200, { storage: supabaseConfigured() ? "supabase" : "memory", providers: out });
+}
+
 async function handleHarvest(req, res, sourceName, provider, schema) {
   const raw = await readBody(req);
   let body;
@@ -277,6 +307,8 @@ async function main() {
       if (req.method === "GET" && p === "/style.css") return sendFile(res, new URL("./public/style.css", import.meta.url));
       if (req.method === "GET" && p === "/app.js")    return sendFile(res, new URL("./public/app.js", import.meta.url));
       if (req.method === "GET" && p === "/health")    return send(res, 200, { ok: true, provider: PROVIDER_NAME, backend: store.backend, cards: store.size ?? null });
+      if (req.method === "GET" && p === "/api/cards")  return handleCardList(req, res);
+      if (req.method === "GET" && p === "/api/connections") return handleConnections(req, res);
       if (req.method === "POST" && p === "/api/process") return handleProcess(req, res, provider, schema);
 
       const harvestMatch = p.match(/^\/api\/harvest\/([a-z0-9_]+)$/);

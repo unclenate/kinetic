@@ -50,6 +50,10 @@ function createMemoryStore() {
       rec.isPublic = true;
       return rec;
     },
+    async listCards() {
+      // Newest-first: reverse the Map's insertion order.
+      return [...cards.entries()].reverse().map(([id, rec]) => ({ id, ...rec }));
+    },
   };
 }
 
@@ -92,6 +96,10 @@ function createSupabaseStore() {
     async shareCard(id) {
       const rows = await supabase.update("proof_cards", `slug=eq.${encodeURIComponent(id)}`, { is_public: true });
       return mapRow(Array.isArray(rows) ? rows[0] : rows);
+    },
+    async listCards({ limit = 200 } = {}) {
+      const rows = await supabase.select("proof_cards", `order=created_at.desc&limit=${limit}`);
+      return rows.map((row) => ({ id: row.slug, ...mapRow(row) }));
     },
   };
 }

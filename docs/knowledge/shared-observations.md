@@ -248,11 +248,12 @@ Activity match 18/20.
   to flatter the mock would weaken the test. Domain (the gated axis) is 20/20.
 - **Ambiguous-domain default = `business`.** A capture with no life-domain
   signal (e.g. reg-10 "stuff today was hard") defaults to `business`, which is
-  the *permissive* side of the privacy gate. The safety net holds today because
+  the *permissive* side of the privacy gate. **Resolved 2026-06-02 (operator
+  decision): keep the `business` default.** The safety net holds today because
   cards are `is_public: false` by default and sharing is an explicit user
   action — but once auto-publish or bulk-share exists, an ambiguous capture
-  defaulting to `business` could skip the non-business confirmation step. Decide
-  before M10 whether the ambiguous default should flip to a private domain.
+  defaulting to `business` could skip the non-business confirmation step. That
+  remains the watch item to revisit before any non-explicit publish path ships.
 - **Real-provider domain-correctness is unmeasured.** The 95% gate has only been
   proven on the deterministic mock (which is partly circular — same author wrote
   the fixtures and the classifier). The meaningful number is Claude/Gemini on
@@ -359,3 +360,37 @@ privacy gate); OAuth `/start` emits a correct 302 to Google with PKCE +
 - Microsoft refresh-token rotation: code persists whatever refresh_token the
   response carries (falls back to the old one) — confirm Microsoft's actual
   rotation behavior against a real tenant.
+
+---
+
+## 2026-06-02 — M10: multi-domain feed + privacy gate (UI verified statically)
+
+**Context:** The visible side of v0.5. Built credential-free against the M7
+pluggable store's memory backend, so the feed and privacy gate run today and
+gain persistence the moment Supabase is configured.
+
+**What shipped:**
+
+- `store.listCards()` on both backends; `GET /api/cards` (feed) and
+  `GET /api/connections` (per-provider configured/connected).
+- UI: reverse-chron feed, domain filter tabs (instant client-side `classList`
+  toggle on `data-domain`), connection-status header chips (disconnected →
+  link to `/oauth/:provider/start`), and the **share-confirmation modal** — a
+  non-business "Share" routes through an un-skippable dialog that names the
+  domain before `/api/share` is called; business cards share directly.
+- `tools/privacy-audit.mjs`: pure `auditPublicCards()` (unit-tested) + a CLI
+  that audits the live store and exits non-zero on any public non-business card.
+
+**Verification gap to close:** the DOM interaction (feed render, tab filtering,
+modal block) was **not** browser-captured this session — chrome-devtools MCP
+held a stale profile lock from a prior session and I declined to kill browser
+processes by guesswork. Mitigations applied: `node --check` on `app.js` (parses)
+and an id/selector consistency check (all 28 referenced ids exist in
+`index.html`), plus live verification of `/api/cards` and `/api/connections`.
+The remaining check is a clean-browser eyeball of the three interactions —
+especially confirming the modal genuinely blocks a non-business share.
+
+**Privacy-audit is backend-sensitive:** against the in-memory backend the CLI
+runs in a fresh, empty process (0 public cards → trivially clean). It is only
+meaningful against Supabase (persistent). The script prints that caveat when it
+detects the memory backend.

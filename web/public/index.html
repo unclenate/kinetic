@@ -19,6 +19,8 @@
       <div class="provider-pill" id="provider-pill">provider: …</div>
     </header>
 
+    <div class="connections" id="connections" aria-label="Connected sources"></div>
+
     <section class="card capture-card">
       <h2>New capture</h2>
       <p class="muted">A messy note, a quick reaction, or a one-liner about something
@@ -111,10 +113,37 @@
       </div>
     </section>
 
+    <section class="card feed-card">
+      <div class="feed-head">
+        <h2>Your Proof feed</h2>
+        <div class="row tab-row domain-tabs" role="tablist" id="domain-tabs">
+          <button class="ghost tab active" data-domain="all" type="button">All</button>
+          <button class="ghost tab" data-domain="business" type="button">Business</button>
+          <button class="ghost tab" data-domain="personal" type="button">Personal</button>
+          <button class="ghost tab" data-domain="family" type="button">Family</button>
+          <button class="ghost tab" data-domain="financial" type="button">Financial</button>
+          <button class="ghost tab" data-domain="parenting" type="button">Parenting</button>
+        </div>
+      </div>
+      <p class="muted small" id="feed-empty">No captures yet — process one above and it shows up here.</p>
+      <div id="feed" class="feed"></div>
+    </section>
+
     <footer class="ftr">
-      <p>M2 demo · in-memory store · no auth · <a href="/health">/health</a></p>
+      <p>v0.5 · <span id="store-pill">store: …</span> · only <strong>business</strong> cards are public-eligible · <a href="/health">/health</a></p>
     </footer>
   </main>
+
+  <div class="modal-overlay hidden" id="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+    <div class="modal card">
+      <h3 id="share-modal-title">Share a non-business capture?</h3>
+      <p id="share-modal-body" class="muted"></p>
+      <div class="row">
+        <button id="share-confirm" class="primary" type="button">Yes, make it public</button>
+        <button id="share-cancel" class="ghost" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <script src="/app.js" type="module"></script>
 </body>

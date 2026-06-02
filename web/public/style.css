@@ -304,3 +304,52 @@ body.proof .ftr { border-top: 1px solid var(--line); padding-top: 16px; }
   box-shadow: 0 0 6px rgba(124, 227, 168, 0.6);
 }
 .muted.small { font-size: 12px; margin-top: 4px; }
+
+/* ---- M10: connections header ---- */
+.connections {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: -6px 0 18px;
+}
+.conn-chip {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  text-decoration: none;
+}
+.conn-chip.on { color: var(--text); border-color: var(--accent); background: rgba(124, 227, 168, 0.12); }
+.conn-chip.off { opacity: 0.5; }
+.conn-chip.connect { color: var(--text); border-color: var(--accent-2); cursor: pointer; }
+.conn-chip.connect:hover { background: var(--bg-soft); }
+
+/* ---- M10: proof feed ---- */
+.feed-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.feed { display: flex; flex-direction: column; gap: 16px; margin-top: 14px; }
+.feed-item .proof-card { margin-bottom: 0; }
+.feed-item-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.feed-public { color: var(--accent); font-size: 13px; font-weight: 600; }
+.ghost.small, button.small { padding: 5px 12px; font-size: 12px; }
+
+/* ---- M10: share-confirmation modal (privacy gate) ---- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.modal-overlay.hidden { display: none; }
+.modal { max-width: 440px; margin: 0; }
+.modal h3 { margin-top: 0; }

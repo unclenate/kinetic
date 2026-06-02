@@ -22,6 +22,19 @@ function demoUserId() {
   return globalThis.process.env.KINETIC_DEMO_USER_ID || "00000000-0000-0000-0000-000000000001";
 }
 
+/** True if a stored token row exists for the provider (no decrypt, no refresh). */
+export async function hasToken(provider) {
+  try {
+    const row = await supabase.selectOne(
+      "oauth_tokens",
+      `provider=eq.${encodeURIComponent(provider)}&user_id=eq.${encodeURIComponent(demoUserId())}`
+    );
+    return !!row;
+  } catch {
+    return false;
+  }
+}
+
 /** Encrypt and upsert a normalized token set for a provider. */
 export async function saveToken(provider, normalized) {
   const row = {
