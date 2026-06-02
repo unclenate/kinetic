@@ -1,23 +1,33 @@
 // web/server.mjs
-// Zero-dependency Node HTTP server for the Kinetic M2 demo.
-// - GET  /                 → capture form (web/public/index.html)
-// - GET  /style.css /app.js → static assets
-// - POST /api/process      → run capture through the selected provider
-// - POST /api/share/:id    → mark a card as public; returns share URL
-// - GET  /proof/:id        → public read-only Proof card page (no auth)
-// - GET  /api/cards/:id    → JSON for a single card
-// - GET  /health           → { ok, provider, cards }
+// Zero-dependency Node HTTP server for the Kinetic demo.
+// - GET  /                      → capture form (web/public/index.html)
+// - GET  /style.css /app.js     → static assets
+// - POST /api/process           → run capture through the selected provider
+// - POST /api/harvest/:source   → harvest from a signal source, process each item
+// - POST /api/share/:id         → mark a card as public; returns share URL
+// - GET  /proof/:id             → public read-only Proof card page (no auth)
+// - GET  /api/cards/:id         → JSON for a single card
+// - GET  /oauth/:provider/start → begin an OAuth authorization (M7)
+// - GET  /oauth/:provider/callback → finish OAuth, store encrypted tokens (M7)
+// - GET  /health                → { ok, provider, backend, cards }
 //
-// Persistence is in-memory only for v0 (M2). Supabase wiring is deferred.
+// Persistence is pluggable (src/db/store.mjs): in-memory by default, Supabase
+// when SUPABASE_URL is configured. The OAuth routes require provider creds
+// (and, to persist, Supabase + KINETIC_TOKEN_ENCRYPTION_KEY); without them they
+// return a clear "not configured" response and the rest of the demo is unaffected.
+//
 // To run:
-//   node web/server.mjs                            # mock provider
+//   node web/server.mjs                            # mock provider, in-memory
 //   KINETIC_PROVIDER=claude node web/server.mjs    # real LLM (Claude)
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
-import { randomBytes } from "node:crypto";
 import { validate, loadKineticSchema } from "../src/validate.mjs";
+import { createStore } from "../src/db/store.mjs";
+import { startAuthorization, exchangeCode } from "../src/oauth/index.mjs";
+import { isConfigured as oauthConfigured } from "../src/oauth/providers.mjs";
+import { isConfigured as supabaseConfigured } from "../src/db/supabase.mjs";
 
 const PORT = parseInt(process.env.PORT || "5173", 10);
 const PROVIDER_NAME = process.env.KINETIC_PROVIDER || "mock";
@@ -31,8 +41,16 @@ async function loadProvider(name) {
   }
 }
 
-// In-memory store. Key: card id, value: { output, createdAt, isPublic, ... }
-const cards = new Map();
+// Pluggable persistence (memory or supabase, chosen by config).
+const store = createStore();
+
+// Short-TTL state -> { provider, codeVerifier } map for the OAuth handshake.
+const pendingAuth = new Map();
+const AUTH_TTL_MS = 10 * 60 * 1000;
+function rememberAuth(state, data) {
+  pendingAuth.set(state, { ...data, createdAt: Date.now() });
+  for (const [k, v] of pendingAuth) if (Date.now() - v.createdAt > AUTH_TTL_MS) pendingAuth.delete(k);
+}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -77,11 +95,15 @@ async function readBody(req, maxBytes = 1024 * 1024) {
   });
 }
 
-function shortId() { return randomBytes(4).toString("hex"); }
-
 function escapeForJsScript(json) {
   // Prevent </script> in user data from breaking out of the embedded JSON.
   return json.replace(/</g, "\\u003c").replace(/-->/g, "--\\u003e");
+}
+
+function baseUrlFrom(req) {
+  const host = req.headers["x-forwarded-host"] || req.headers.host || `localhost:${PORT}`;
+  const proto = req.headers["x-forwarded-proto"] || "http";
+  return `${proto}://${host}`;
 }
 
 async function handleProcess(req, res, provider, schema) {
@@ -95,10 +117,7 @@ async function handleProcess(req, res, provider, schema) {
   const t0 = Date.now();
   let output;
   try {
-    output = await provider.process({
-      text: input.text,
-      image_caption: input.image_caption || "",
-    });
+    output = await provider.process({ text: input.text, image_caption: input.image_caption || "" });
   } catch (e) {
     return send(res, 502, { error: "provider error", detail: String(e.message || e) });
   }
@@ -108,43 +127,20 @@ async function handleProcess(req, res, provider, schema) {
     return send(res, 502, { error: "provider returned invalid output", errors: v.errors });
   }
 
-  // Server controls the id namespace on persist.
-  const cardId = shortId();
-  output.proof_card.id = `proof_${cardId}`;
-  output.admin_tasks = output.admin_tasks.map((t, i) => ({
-    ...t,
-    id: `task_${cardId}${i.toString(16)}`,
-  }));
-
-  cards.set(cardId, {
-    output,
-    createdAt: new Date().toISOString(),
-    isPublic: false,
-    elapsedMs: Date.now() - t0,
-    provider: PROVIDER_NAME,
-  });
-
-  send(res, 200, {
-    id: cardId,
-    output,
-    elapsedMs: Date.now() - t0,
-    provider: PROVIDER_NAME,
-  });
+  const { id, output: stored } = await store.saveCard({ output, provider: PROVIDER_NAME });
+  send(res, 200, { id, output: stored, elapsedMs: Date.now() - t0, provider: PROVIDER_NAME });
 }
 
-function handleShare(req, res, id) {
-  const card = cards.get(id);
-  if (!card) return send(res, 404, { error: "card not found" });
-  card.isPublic = true;
-  const host = req.headers["x-forwarded-host"] || req.headers.host || `localhost:${PORT}`;
-  const proto = req.headers["x-forwarded-proto"] || "http";
-  send(res, 200, { id, url: `${proto}://${host}/proof/${id}` });
+async function handleShare(req, res, id) {
+  const rec = await store.shareCard(id);
+  if (!rec) return send(res, 404, { error: "card not found" });
+  send(res, 200, { id, url: `${baseUrlFrom(req)}/proof/${id}` });
 }
 
-function handleCard(_req, res, id) {
-  const card = cards.get(id);
-  if (!card) return send(res, 404, { error: "card not found" });
-  send(res, 200, card);
+async function handleCard(_req, res, id) {
+  const rec = await store.getCard(id);
+  if (!rec) return send(res, 404, { error: "card not found" });
+  send(res, 200, rec);
 }
 
 async function handleHarvest(req, res, sourceName, provider, schema) {
@@ -183,23 +179,12 @@ async function handleHarvest(req, res, sourceName, provider, schema) {
       results.push({ source_id: item.source_id, error: "invalid output", errors: v.errors });
       continue;
     }
-    const cardId = shortId();
-    output.proof_card.id = `proof_${cardId}`;
-    output.admin_tasks = output.admin_tasks.map((t, i) => ({ ...t, id: `task_${cardId}${i.toString(16)}` }));
-    cards.set(cardId, {
+    const { id, output: stored } = await store.saveCard({
       output,
-      createdAt: new Date().toISOString(),
-      isPublic: false,
-      elapsedMs: Date.now() - t0,
       provider: PROVIDER_NAME,
-      source: { name: sourceName, source_id: item.source_id, occurred_at: item.occurred_at || null },
+      source: { name: sourceName, source_id: item.source_id, occurred_at: item.occurred_at || null, domain_hint: item.provider_domain_hint || null },
     });
-    results.push({
-      source_id: item.source_id,
-      id: cardId,
-      output,
-      elapsedMs: Date.now() - t0,
-    });
+    results.push({ source_id: item.source_id, id, output: stored, elapsedMs: Date.now() - t0 });
   }
 
   send(res, 200, {
@@ -213,19 +198,71 @@ async function handleHarvest(req, res, sourceName, provider, schema) {
 }
 
 async function handleProofPage(_req, res, id) {
-  const card = cards.get(id);
+  const rec = await store.getCard(id);
   const proofHtmlUrl = new URL("./public/proof.html", import.meta.url);
   const missingHtmlUrl = new URL("./public/proof-missing.html", import.meta.url);
-  if (!card || !card.isPublic) {
+  if (!rec || !rec.isPublic) {
     return sendFile(res, missingHtmlUrl);
   }
   const tmpl = await readFile(proofHtmlUrl, "utf8");
   const filled = tmpl
-    .replace("{{CARD_JSON}}", escapeForJsScript(JSON.stringify(card.output.proof_card)))
-    .replace("{{TASKS_JSON}}", escapeForJsScript(JSON.stringify(card.output.admin_tasks)))
-    .replace("{{CREATED_AT}}", new Date(card.createdAt).toUTCString());
+    .replace("{{CARD_JSON}}", escapeForJsScript(JSON.stringify(rec.output.proof_card)))
+    .replace("{{TASKS_JSON}}", escapeForJsScript(JSON.stringify(rec.output.admin_tasks)))
+    .replace("{{CREATED_AT}}", new Date(rec.createdAt).toUTCString());
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   res.end(filled);
+}
+
+// ---- OAuth (M7) ----------------------------------------------------------
+
+function handleOAuthStart(_req, res, provider) {
+  if (provider !== "google" && provider !== "microsoft") {
+    return send(res, 404, { error: `unknown oauth provider: ${provider}` });
+  }
+  if (!oauthConfigured(provider)) {
+    return send(res, 503, {
+      error: "oauth not configured",
+      detail: `Set ${provider.toUpperCase()}_OAUTH_CLIENT_ID / _SECRET (and KINETIC_BASE_URL) in .env.local.`,
+    });
+  }
+  const { url, state, codeVerifier } = startAuthorization(provider);
+  rememberAuth(state, { provider, codeVerifier });
+  res.writeHead(302, { Location: url });
+  res.end();
+}
+
+async function handleOAuthCallback(_req, res, provider, url) {
+  if (provider !== "google" && provider !== "microsoft") {
+    return send(res, 404, { error: `unknown oauth provider: ${provider}` });
+  }
+  const error = url.searchParams.get("error");
+  if (error) return send(res, 400, { error: "oauth denied", detail: error });
+
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const pending = state && pendingAuth.get(state);
+  if (!code || !pending || pending.provider !== provider) {
+    return send(res, 400, { error: "invalid or expired oauth state" });
+  }
+  pendingAuth.delete(state);
+
+  if (!supabaseConfigured()) {
+    return send(res, 503, {
+      error: "token storage not configured",
+      detail: "OAuth succeeded but SUPABASE_URL + KINETIC_TOKEN_ENCRYPTION_KEY are required to persist tokens.",
+    });
+  }
+
+  try {
+    const tokens = await exchangeCode(provider, { code, codeVerifier: pending.codeVerifier });
+    // Imported lazily so the rest of the server runs without the crypto key set.
+    const { saveToken } = await import("../src/oauth/token-store.mjs");
+    await saveToken(provider, tokens);
+  } catch (e) {
+    return send(res, 502, { error: "oauth exchange failed", detail: String(e.message || e) });
+  }
+  res.writeHead(302, { Location: "/?connected=" + provider });
+  res.end();
 }
 
 async function main() {
@@ -235,20 +272,32 @@ async function main() {
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-      if (req.method === "GET" && url.pathname === "/")        return sendFile(res, new URL("./public/index.html", import.meta.url));
-      if (req.method === "GET" && url.pathname === "/style.css") return sendFile(res, new URL("./public/style.css", import.meta.url));
-      if (req.method === "GET" && url.pathname === "/app.js")    return sendFile(res, new URL("./public/app.js", import.meta.url));
-      if (req.method === "GET" && url.pathname === "/health")    return send(res, 200, { ok: true, provider: PROVIDER_NAME, cards: cards.size });
-      if (req.method === "POST" && url.pathname === "/api/process") return handleProcess(req, res, provider, schema);
-      const harvestMatch = url.pathname.match(/^\/api\/harvest\/([a-z0-9_]+)$/);
+      const p = url.pathname;
+      if (req.method === "GET" && p === "/")          return sendFile(res, new URL("./public/index.html", import.meta.url));
+      if (req.method === "GET" && p === "/style.css") return sendFile(res, new URL("./public/style.css", import.meta.url));
+      if (req.method === "GET" && p === "/app.js")    return sendFile(res, new URL("./public/app.js", import.meta.url));
+      if (req.method === "GET" && p === "/health")    return send(res, 200, { ok: true, provider: PROVIDER_NAME, backend: store.backend, cards: store.size ?? null });
+      if (req.method === "POST" && p === "/api/process") return handleProcess(req, res, provider, schema);
+
+      const harvestMatch = p.match(/^\/api\/harvest\/([a-z0-9_]+)$/);
       if (req.method === "POST" && harvestMatch) return handleHarvest(req, res, harvestMatch[1], provider, schema);
-      const shareMatch = url.pathname.match(/^\/api\/share\/([a-f0-9]{6,16})$/);
+
+      const shareMatch = p.match(/^\/api\/share\/([a-f0-9]{6,16})$/);
       if (req.method === "POST" && shareMatch) return handleShare(req, res, shareMatch[1]);
-      const cardMatch = url.pathname.match(/^\/api\/cards\/([a-f0-9]{6,16})$/);
+
+      const cardMatch = p.match(/^\/api\/cards\/([a-f0-9]{6,16})$/);
       if (req.method === "GET" && cardMatch) return handleCard(req, res, cardMatch[1]);
-      const proofMatch = url.pathname.match(/^\/proof\/([a-f0-9]{6,16})$/);
+
+      const proofMatch = p.match(/^\/proof\/([a-f0-9]{6,16})$/);
       if (req.method === "GET" && proofMatch) return handleProofPage(req, res, proofMatch[1]);
-      send(res, 404, { error: "not found", path: url.pathname });
+
+      const startMatch = p.match(/^\/oauth\/([a-z]+)\/start$/);
+      if (req.method === "GET" && startMatch) return handleOAuthStart(req, res, startMatch[1]);
+
+      const cbMatch = p.match(/^\/oauth\/([a-z]+)\/callback$/);
+      if (req.method === "GET" && cbMatch) return handleOAuthCallback(req, res, cbMatch[1], url);
+
+      send(res, 404, { error: "not found", path: p });
     } catch (e) {
       console.error("server error:", e);
       send(res, 500, { error: "internal", detail: String(e.message || e) });
@@ -258,6 +307,7 @@ async function main() {
   server.listen(PORT, () => {
     console.log(`\nKinetic demo`);
     console.log(`  provider: ${PROVIDER_NAME}`);
+    console.log(`  store:    ${store.backend}`);
     console.log(`  url:      http://localhost:${PORT}`);
     console.log(`  health:   http://localhost:${PORT}/health`);
     console.log("");

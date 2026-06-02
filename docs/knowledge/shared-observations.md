@@ -305,3 +305,57 @@ degrade gracefully, but the first live run per provider may surface field-name
 or nesting surprises (especially Drive Activity's `primaryActionDetail` oneof
 and OneDrive's `parentReference` variants). Treat the first live harvest per
 source as a verification step, not a formality.
+
+---
+
+## 2026-06-02 — M7: OAuth + Supabase scaffolded offline (credentials gate live verification)
+
+**Context:** M7 (the planned next milestone) is blocked on operator-provisioned
+credentials. We built the whole code surface credential-free so it's ready to
+wire the instant the env vars exist.
+
+**What shipped (all test-first, 18 offline tests):**
+
+- `src/oauth/` — `crypto.mjs` (AES-256-GCM token encryption: iv‖tag‖ciphertext,
+  base64), `pkce.mjs` (S256), `providers.mjs` (Google + Microsoft endpoints +
+  ADR-0004 scopes + auth-URL builder), `index.mjs` (start / exchangeCode /
+  refreshAccessToken over `fetch`), `token-store.mjs` (encrypt→upsert,
+  decrypt→refresh-on-use).
+- `src/db/` — `supabase.mjs` (PostgREST over `fetch`, service-role), `store.mjs`
+  (pluggable card store, memory ↔ supabase by config).
+- `db/schema.sql`, `.env.example` additions, server routes + store wiring.
+
+**Test strategy:** same `fetch`-stub approach as the harvesters — the real flow
+logic runs, only the network boundary is faked. Notable coverage: ciphertext is
+asserted to *not* contain the plaintext token; a tampered ciphertext fails GCM
+auth; `loadToken` is driven through a real refresh cycle (select → token
+endpoint → re-upsert) by branching the stub on URL.
+
+**Deviations from ADR-0004 (intentional, documented in db/schema.sql):**
+
+- **`*_enc` columns are `text` (base64), not `bytea`.** PostgREST round-trips
+  base64 text cleanly; bytea needs hex-encoding gymnastics. No security
+  difference — bytes are encrypted before they reach the column.
+- **`proof_cards.slug` (one column) instead of ADR's `public_slug`.** A single
+  short slug serves both the internal `/api/cards/:id` lookup and the public
+  `/proof/:id` URL, gated by `is_public`. Keeps the server's short-id URL model
+  identical across the memory and Supabase backends.
+- **`captures` row is optional for typed captures** (`capture_id` nullable). The
+  table still exists for harvested-source provenance.
+
+**Verified offline:** memory-mode demo unchanged (process → share → proof →
+privacy gate); OAuth `/start` emits a correct 302 to Google with PKCE +
+`access_type=offline` + full scopes when creds are present; routes return clean
+"not configured" 503s without creds.
+
+**Gaps to close at M7-live (need credentials):**
+
+- The **Supabase store backend** (`createSupabaseStore`) is request-built and
+  unit-tested at the client layer, but the saveCard/getCard/shareCard
+  round-trip is **not** integration-tested offline — no DB to hit. First real
+  run is a verification step.
+- Real consent screens, ciphertext-visible-in-row, refresh against a genuinely
+  expired token, and server-restart persistence are all live-only checks.
+- Microsoft refresh-token rotation: code persists whatever refresh_token the
+  response carries (falls back to the old one) — confirm Microsoft's actual
+  rotation behavior against a real tenant.

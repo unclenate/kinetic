@@ -16,7 +16,7 @@ exit criteria so "done" is unambiguous.
 | M4 — Demo dry-run passed | 2026-05-16 | @unclenate | Done | 1-day-track runbook + screenshots committed; live dry-run executed end-to-end via Chrome. |
 | M5 — Hackathon submission (1-day track) | 2026-05-16 | @unclenate | Done | `SUBMISSION.md` delivered. |
 | **M6 — Discovery refresh for 5-day track** | 2026-05-16 | @unclenate | Done | ADR-0002 / ADR-0003 / ADR-0004 written; problem statement + personas + requirements + MVP scope refreshed; v0 history preserved. |
-| M7 — Foundations (OAuth + Supabase) | 2026-05-17 | @unclenate | Planned | Real Google + Microsoft OAuth flows; Supabase schema applied; encrypted token storage; v0 in-memory store replaced. |
+| M7 — Foundations (OAuth + Supabase) | 2026-05-17 | @unclenate | Active | OAuth flow (PKCE), AES-256-GCM token crypto, Supabase PostgREST layer, pluggable store, and server routes all built + 18 offline tests green; demo still runs on memory. **Operator credential setup + live verification (real consent, ciphertext-in-DB, refresh-on-expiry, restart) pending.** |
 | M8 — Schema v0.5 + regression refresh | 2026-05-18 | @unclenate | Done | `category`→`activity_type` rename; new `domain` enum; regression set grown to 20 fixtures (≥2/domain). Mock: 20/20 schema-valid, 20/20 domain-correct. Real-provider run pending API keys (M11). |
 | M9 — New harvesters | 2026-05-19 | @unclenate | Active | 5 modules built on the `harvest()` contract + 12 offline tests (stubbed `fetch`) green. **Live verification against real accounts is gated on M7 OAuth tokens.** |
 | M10 — Multi-domain UX + privacy gate | 2026-05-20 | @unclenate | Planned | Feed view; domain filter tabs; per-card confirmation modal for non-business shares; multi-account OAuth UI. |
@@ -197,21 +197,33 @@ go from "not configured" to "wired and working" in one day.
 
 **Exit criteria:**
 
-- [ ] Operator has created the Google Cloud project per ADR-0004 playbook;
-      `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` in `.env.local`
-- [ ] Operator has created the Microsoft Azure App Registration per ADR-0004
-      playbook; `MICROSOFT_OAUTH_*` env vars set
-- [ ] Supabase schema from ADR-0004 applied; RLS policies enabled
+Code + offline tests (done this session):
+
+- [x] `src/oauth/` module: authorization-code + PKCE flow for both providers
+      (`crypto.mjs` AES-256-GCM, `pkce.mjs`, `providers.mjs`, `index.mjs`,
+      `token-store.mjs`); `/oauth/:provider/start` + `/callback` routes wired
+- [x] Supabase persistence layer: PostgREST client (`src/db/supabase.mjs`),
+      pluggable card store (`src/db/store.mjs`, memory ↔ supabase), schema in
+      `db/schema.sql` ready to apply
+- [x] Token crypto: encrypt-before-store proven (saveToken sends ciphertext,
+      never plaintext); refresh-on-use proven (loadToken refreshes a near-expiry
+      token and re-persists). 18 offline tests across `tests/oauth.test.mjs` +
+      `tests/store.test.mjs`
+- [x] In-memory store replaced by the pluggable store; demo still runs on memory
+      with no Supabase (verified live), and the OAuth routes degrade gracefully
+      to "not configured" without credentials
+
+Operator setup + live verification (pending credentials):
+
+- [ ] Google Cloud project per ADR-0004 playbook; `GOOGLE_OAUTH_CLIENT_ID/SECRET`
+- [ ] Microsoft Azure App Registration; `MICROSOFT_OAUTH_*`
+- [ ] Supabase schema applied (`db/schema.sql`); RLS policies enabled
 - [ ] `KINETIC_TOKEN_ENCRYPTION_KEY` generated and stored in `.env.local`
-- [ ] `src/oauth/` module: authorization-code + PKCE flow for both providers;
-      `/oauth/:provider/start`, `/oauth/:provider/callback` routes wired
-- [ ] Tokens stored encrypted in `oauth_tokens` (verified by reading row
-      directly in Supabase — ciphertext visible, not plaintext)
-- [ ] Automatic refresh-on-use behavior verified by manually expiring a token
-- [ ] v0.5 demo seeds use the stored token; playground-token shortcut paths
-      removed from `gcal.mjs` (kept only as a debug env fallback)
-- [ ] Server-restart test: stop server, restart, harvest still works against
-      stored tokens
+- [ ] Tokens stored encrypted in `oauth_tokens` (verify ciphertext in the row)
+- [ ] Refresh-on-use verified against a real expiring token
+- [ ] Harvesters read the stored token; `gcal.mjs` playground path kept only as
+      a debug fallback
+- [ ] Server-restart test: stop, restart, harvest still works from stored tokens
 
 ---
 
