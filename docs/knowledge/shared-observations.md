@@ -257,3 +257,51 @@ Activity match 18/20.
   proven on the deterministic mock (which is partly circular — same author wrote
   the fixtures and the classifier). The meaningful number is Claude/Gemini on
   these 20 fixtures; that run is still gated on API keys and is the M11 task.
+
+---
+
+## 2026-06-02 — M9: five harvesters built and tested offline (live verification deferred)
+
+**Context:** With M7 (OAuth + Supabase) blocked on operator-provisioned
+credentials, we built the M9 harvesters credential-free to keep momentum. All
+five plug into the same `harvest()` contract as `github`/`gcal`/`calendar`.
+
+**What shipped:**
+
+- `mscal` (Microsoft Graph), `gdrive` (Google Drive Activity), `onedrive`
+  (Graph), `gmail_sent` (Gmail), `outlook_sent` (Graph). Each emits
+  `{ source_id, text, image_caption, occurred_at, provider_domain_hint }`.
+- `src/harvesters/domain-hint.mjs`: shared SOFT-signal heuristics. Email
+  harvesters use recipient-domain (free-mail → `personal`, org domain →
+  `business`); all use subject/name keyword matching for the four non-business
+  domains. The hint is explicitly *not* the authoritative label — the LLM
+  contract still owns `domain`.
+
+**Offline-test strategy (the interesting part):** the harvesters call the
+global `fetch`, so `tests/harvesters.test.mjs` stubs `globalThis.fetch` with
+synthetic provider-shaped JSON and runs the *real* `harvest()` end-to-end —
+auth guard, request construction, response mapping, and domain hinting — with
+zero network or credentials. 12/12 green. This is the maximum confidence
+achievable without accounts; the network boundary is the only thing mocked.
+
+**Deviations / decisions worth remembering:**
+
+- **calendarView, not /me/calendar/events.** The milestone named `/events`, but
+  `/me/calendarView?startDateTime=..&endDateTime=..` is the correct API for a
+  time-windowed "recent activity" pull (it expands recurring instances, like
+  gcal's `singleEvents=true`). Documented in the M9 milestone detail.
+- **Graph datetime parsing.** Graph returns naive UTC with up to 7 fractional
+  digits and no `Z` (`2026-06-01T17:00:00.0000000`). `mscal` clamps sub-second
+  to ms and appends `Z` before parsing; naive `Date.parse` was unreliable.
+- **Route regex widened** to `[a-z0-9_]+` so `gmail_sent`/`outlook_sent`
+  resolve. The hint util is `domain-hint.mjs` (hyphen) specifically so the
+  route can never resolve it as a harvester.
+- **gmail_sent reads metadata only** (`format=metadata`, headers To/Subject/Date)
+  — never message bodies — to minimize what Kinetic touches in a mailbox.
+
+**Risk to close at M9-live:** the mappers are built against *documented* response
+shapes, not captured real payloads. Optional chaining + fallbacks make them
+degrade gracefully, but the first live run per provider may surface field-name
+or nesting surprises (especially Drive Activity's `primaryActionDetail` oneof
+and OneDrive's `parentReference` variants). Treat the first live harvest per
+source as a verification step, not a formality.

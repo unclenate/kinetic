@@ -18,7 +18,7 @@ exit criteria so "done" is unambiguous.
 | **M6 — Discovery refresh for 5-day track** | 2026-05-16 | @unclenate | Done | ADR-0002 / ADR-0003 / ADR-0004 written; problem statement + personas + requirements + MVP scope refreshed; v0 history preserved. |
 | M7 — Foundations (OAuth + Supabase) | 2026-05-17 | @unclenate | Planned | Real Google + Microsoft OAuth flows; Supabase schema applied; encrypted token storage; v0 in-memory store replaced. |
 | M8 — Schema v0.5 + regression refresh | 2026-05-18 | @unclenate | Done | `category`→`activity_type` rename; new `domain` enum; regression set grown to 20 fixtures (≥2/domain). Mock: 20/20 schema-valid, 20/20 domain-correct. Real-provider run pending API keys (M11). |
-| M9 — New harvesters | 2026-05-19 | @unclenate | Planned | Microsoft Graph Calendar, Google Drive Activity, OneDrive Graph, Gmail sent-items, Outlook sent-items. Same `harvest()` contract. |
+| M9 — New harvesters | 2026-05-19 | @unclenate | Active | 5 modules built on the `harvest()` contract + 12 offline tests (stubbed `fetch`) green. **Live verification against real accounts is gated on M7 OAuth tokens.** |
 | M10 — Multi-domain UX + privacy gate | 2026-05-20 | @unclenate | Planned | Feed view; domain filter tabs; per-card confirmation modal for non-business shares; multi-account OAuth UI. |
 | M11 — Polish + 5-day-track dry runs | 2026-05-21 | @unclenate | Planned | 3 consecutive clean dry runs; runbook update for the 5-source flow; regression numbers re-recorded post-prompt-update. |
 | M12 — Hackathon submission (5-day track) | 2026-05-21 | @unclenate | Planned | `SUBMISSION.md` v0.5 section delivered; demo URL or runbook reachable by judges. |
@@ -260,23 +260,33 @@ Five new harvesters, all on the same `{ harvest }` contract from M6 of v0.
 
 **Exit criteria:**
 
-- [ ] `src/harvesters/mscal.mjs` — Microsoft Graph Calendar
-      `GET /me/calendar/events`; same shape as `gcal`
-- [ ] `src/harvesters/gdrive.mjs` — Google Drive Activity API
+- [x] `src/harvesters/mscal.mjs` — Microsoft Graph Calendar.
+      Uses `GET /me/calendarView?startDateTime=..&endDateTime=..` rather than
+      the planned `/me/calendar/events`: calendarView expands recurring events
+      within a time window (the gcal `singleEvents=true` equivalent), which is
+      what a "recent activity" harvest actually wants.
+- [x] `src/harvesters/gdrive.mjs` — Google Drive Activity API
       `POST https://driveactivity.googleapis.com/v2/activity:query`
-- [ ] `src/harvesters/onedrive.mjs` — Microsoft Graph
-      `GET /me/drive/recent` + `GET /me/drive/root/delta`
-- [ ] `src/harvesters/gmail_sent.mjs` — Gmail API `users.messages.list`
-      with `q=in:sent newer_than:1d`; metadata fields only
-- [ ] `src/harvesters/outlook_sent.mjs` — Microsoft Graph
+- [x] `src/harvesters/onedrive.mjs` — Microsoft Graph `GET /me/drive/recent`
+      (the `root/delta` cursor variant is a follow-up for incremental syncs)
+- [x] `src/harvesters/gmail_sent.mjs` — Gmail API `users.messages.list`
+      with `q=in:sent newer_than:1d`, then `messages.get?format=metadata`
+      (subject/recipients/date only — never body content)
+- [x] `src/harvesters/outlook_sent.mjs` — Microsoft Graph
       `GET /me/mailFolders/sentitems/messages`
-- [ ] Each harvester emits the canonical capture shape
-- [ ] Each harvester surfaces a `provider_domain_hint` field (`business` /
-      `personal` / …) computed from heuristics (sender domain, folder
-      path, file location) so the LLM has a hint, not a hard label
-- [ ] Server's `/api/harvest/:source` already auto-routes (no changes)
-- [ ] Each harvester tested live against the operator's real account;
-      screenshots committed
+- [x] Each harvester emits the canonical capture shape
+- [x] Each harvester surfaces a `provider_domain_hint` field
+      (`src/harvesters/domain-hint.mjs`) computed from heuristics (recipient
+      email domains, file path, subject keywords) so the LLM has a hint, not a
+      hard label
+- [x] Server's `/api/harvest/:source` routes the new sources (route regex
+      widened to `[a-z0-9_]+` so underscored names `gmail_sent` / `outlook_sent`
+      resolve)
+- [x] Offline tests: `tests/harvesters.test.mjs` exercises the full `harvest()`
+      path for all 5 with a stubbed `fetch` (auth checks, request building,
+      response mapping, domain hinting) — 12/12 green, zero credentials
+- [ ] **Each harvester tested live against the operator's real account;
+      screenshots committed** — gated on M7 OAuth tokens
 
 ---
 

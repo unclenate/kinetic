@@ -240,7 +240,7 @@ async function main() {
       if (req.method === "GET" && url.pathname === "/app.js")    return sendFile(res, new URL("./public/app.js", import.meta.url));
       if (req.method === "GET" && url.pathname === "/health")    return send(res, 200, { ok: true, provider: PROVIDER_NAME, cards: cards.size });
       if (req.method === "POST" && url.pathname === "/api/process") return handleProcess(req, res, provider, schema);
-      const harvestMatch = url.pathname.match(/^\/api\/harvest\/([a-z]+)$/);
+      const harvestMatch = url.pathname.match(/^\/api\/harvest\/([a-z0-9_]+)$/);
       if (req.method === "POST" && harvestMatch) return handleHarvest(req, res, harvestMatch[1], provider, schema);
       const shareMatch = url.pathname.match(/^\/api\/share\/([a-f0-9]{6,16})$/);
       if (req.method === "POST" && shareMatch) return handleShare(req, res, shareMatch[1]);

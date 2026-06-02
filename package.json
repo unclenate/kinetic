@@ -8,10 +8,12 @@
     "node": ">=18"
   },
   "scripts": {
+    "test": "node src/validate.mjs --selftest && node src/regression.mjs && node tests/harvesters.test.mjs",
     "regression": "node src/regression.mjs",
     "regression:gemini": "KINETIC_PROVIDER=gemini node src/regression.mjs",
     "regression:claude": "KINETIC_PROVIDER=claude node src/regression.mjs",
-    "validator:selftest": "node src/validate.mjs --selftest"
+    "validator:selftest": "node src/validate.mjs --selftest",
+    "harvesters:test": "node tests/harvesters.test.mjs"
   },
   "license": "UNLICENSED",
   "author": "Nate DiNiro <@unclenate>"
