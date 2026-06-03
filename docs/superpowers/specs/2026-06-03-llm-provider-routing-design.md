@@ -4,7 +4,7 @@
 **Author:** @unclenate (with Claude)
 **Status:** Approved — proceeding to implementation plan (sub-project 1 of 2)
 **Related:** ADR-0003 (domain × activity_type), ADR-0004 (OAuth + Supabase),
-M9 `provider_domain_hint`. Will be recorded as **ADR-0005** on implementation.
+M9 `provider_domain_hint`. Will be recorded as **ADR-0006** on implementation.
 
 ---
 
@@ -243,7 +243,7 @@ UI, the learned per-sender map, and the prompt few-shot/fine-tune pipeline.
 
 ## Rollout / milestone
 - New milestone **M13 — Pluggable providers + privacy-by-design routing**;
-  record **ADR-0005** summarizing the routing + at-rest-encryption decision.
+  record **ADR-0006** summarizing the routing + at-rest-encryption decision.
 - Schema migration applied to the live Supabase project via MCP.
 - `.env.example`, `db/schema.sql`, milestones, change-log, shared-observations updated.
 

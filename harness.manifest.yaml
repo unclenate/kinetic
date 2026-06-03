@@ -1,26 +1,33 @@
+# Copyright 2026 Nate DiNiro
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Kinetic composition. Advanced from the discovery composition to the
+# node-web-saas-postgres composition now that the stack is chosen and built
+# (Node web server + Supabase Postgres + OAuth). See ADR-0005.
 schemaVersion: 1
 project:
   id: kinetic
   name: Kinetic (AutoPortfolio)
-  maturity: prototype
-  criticality: low
+  maturity: alpha
+  criticality: medium
 modules:
   core:
     - kernel/base
+  stacks:
+    - node-typescript
+  architectures:
+    - web-app
+  data:
+    - relational-postgres
   delivery:
-    - prototype
+    - production-saas
   management:
-    - discovery-intake
     - product-lite
     - project-standard
+    - testing-standard
+    - knowledge-capture
   agents:
     - base
+    - claude-code
 overrides:
   requiredArtifacts: []
-  disabledValidations:
-    - required-artifacts
-# Stack, architecture, and data modules are intentionally absent.
-# This composition is for the discovery phase before stack is chosen.
-# After completing platform/workflow/discovery-to-composition.md Step 6,
-# replace this file with the appropriate full composition from platform/compositions/
-# or create a project-specific harness.manifest.yaml with the selected modules.
+  disabledValidations: []

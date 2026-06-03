@@ -1,0 +1,10 @@
+# Kinetic placeholder-scan exclusions (consumed by validate-placeholders.sh).
+# The auto-harness platform is vendored as a git submodule and legitimately
+# contains [[PLACEHOLDER_NAME]] / YYYY-MM-DD template tokens; exclude it from
+# our own self-scan.
+.harness/**
+# Session-continuity scratch (hook-managed; may hold template-ish content).
+.remember/**
+# Implementation plans legitimately contain illustrative template/code bodies
+# with placeholder tokens (same rationale as the harness's own ignore).
+docs/superpowers/plans/**

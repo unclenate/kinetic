@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(npm run test:*)",
+      "Bash(node src/validate.mjs --selftest)",
+      "Bash(node src/regression.mjs)",
+      "Bash(node tests/*.mjs)",
+      "Bash(node web/server.mjs)",
+      "Bash(bash .harness/platform/validators/*.sh:*)"
+    ],
+    "deny": [
+      "Bash(npm install:*)",
+      "Bash(npm i:*)"
+    ]
+  }
+}
