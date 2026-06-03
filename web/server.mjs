@@ -185,6 +185,23 @@ async function handleHarvest(req, res, sourceName, provider, schema) {
     return send(res, 404, { error: `unknown source: ${sourceName}` });
   }
 
+  // OAuth-backed sources: inject the stored (auto-refreshed) access token so a
+  // connected account powers harvesting without the user pasting a token.
+  // A token explicitly supplied in the body still wins (debug path).
+  const OAUTH_SOURCE = {
+    gcal: "google", gdrive: "google", gmail_sent: "google",
+    mscal: "microsoft", onedrive: "microsoft", outlook_sent: "microsoft",
+  };
+  const tokenProvider = OAUTH_SOURCE[sourceName];
+  if (tokenProvider && !body.accessToken && supabaseConfigured()) {
+    try {
+      const { loadToken } = await import("../src/oauth/token-store.mjs");
+      body.accessToken = await loadToken(tokenProvider); // decrypts + refreshes on use
+    } catch (e) {
+      return send(res, 400, { error: `${tokenProvider} not connected`, detail: String(e.message || e) });
+    }
+  }
+
   let items;
   try {
     items = await harvester.harvest(body);
