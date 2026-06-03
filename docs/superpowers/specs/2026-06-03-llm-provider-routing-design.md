@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-03
 **Author:** @unclenate (with Claude)
-**Status:** Approved (design) — pending spec review
+**Status:** Approved — proceeding to implementation plan (sub-project 1 of 2)
 **Related:** ADR-0003 (domain × activity_type), ADR-0004 (OAuth + Supabase),
 M9 `provider_domain_hint`. Will be recorded as **ADR-0005** on implementation.
 
@@ -29,6 +29,9 @@ and "I control which LLMs run and where" is the enabling capability.
 - No separate local datastore — sensitive data is encrypted in Supabase
   (chosen over a second store backend).
 - No multi-account work here (tracked separately).
+- **No feedback/finetuning logic here** — this build only *captures the signals*
+  (predicted vs hint, source, sender, residency, needs_review). The active/passive
+  correction + learning loop is **sub-project 2** with its own spec.
 
 ## Privacy-by-Design conformance
 
@@ -74,13 +77,21 @@ and "I control which LLMs run and where" is the enabling capability.
 ### 3. Router — `src/providers/router.mjs`
 `resolve({ source, domainHint, override }) → { provider, model, residency }`
 
-Precedence:
-1. **Override** — `override.provider` (+ `override.model`) from the request body / UI.
-2. **Routing rule** (privacy-as-default):
+Precedence (first match wins):
+1. **Override** — `override.provider` (+ `override.model`) from the request body
+   / UI. A sensitive capture (pinned-local or sensitive/unknown hint) sent to a
+   **cloud** provider via override requires `acknowledge_cloud: true`.
+2. **Source pin** — if `source` is in the always-local set → **local**. Pins a
+   known-personal source (e.g. a personal mailbox the operator marks personal)
+   to local regardless of hint. Config: `KINETIC_LOCAL_SOURCES` (comma list of
+   source names); later, a connected account flagged "personal" pins its
+   harvests. Closes the hint-misclassification gap for sources you trust to be
+   personal.
+3. **Routing rule** (privacy-as-default):
    - `domainHint ∈ {personal, family, financial, parenting}` → local provider.
    - `domainHint === "unknown"` (no positive signal) → **local** (private default).
    - `domainHint === "business"` (a *positive* business signal) → cloud provider.
-3. **Defaults:** `KINETIC_LOCAL_PROVIDER` (default `ollama`),
+4. **Defaults:** `KINETIC_LOCAL_PROVIDER` (default `ollama`),
    `KINETIC_CLOUD_PROVIDER` (default `claude`). `KINETIC_DEFAULT_PROVIDER`
    (default `mock`) is used by the regression harness and when neither
    local nor cloud is configured.
@@ -160,6 +171,8 @@ OPENAI_MODEL=gpt-4o-mini
 KINETIC_LOCAL_PROVIDER=ollama
 KINETIC_CLOUD_PROVIDER=claude
 KINETIC_DEFAULT_PROVIDER=mock
+KINETIC_LOCAL_SOURCES=          # comma list of sources always routed local
+KINETIC_TWO_PASS=false          # Phase D: classify locally first, then route
 ```
 
 ### 9. Integration points
@@ -185,6 +198,34 @@ capture
   → store.saveCard(..., {sensitive})   → encrypt output/raw_text if sensitive
   → respond { id, provider, model, residency }
 ```
+
+## Feedback readiness (forward-compatibility for sub-project 2)
+
+The categorization-feedback / finetuning loop is **sub-project 2** (its own
+spec). It will let the operator correct routing/categorization **actively**
+(confirm/recategorize an uncertain card) and **passively** (the system learns —
+per-sender maps, few-shot prompt augmentation, eventually fine-tuning). This is
+essential for a mixed business/personal persona mailbox where hints are noisy.
+
+To avoid a later migration, **this build persists the learning signals** on each
+card so corrections have something to learn from:
+- `predicted_domain` (the LLM's output domain), `domain_hint` (pre-LLM),
+  `source`, `residency`, and `sender` / origin identifier when available
+  (e.g. the email `from`/`to` domain for mail sources).
+- A nullable `needs_review boolean` (set when hint was `unknown`) so the UI can
+  surface uncertain captures for active confirmation.
+
+Schema additions for forward-compat (small, additive):
+```sql
+alter table proof_cards add column if not exists domain_hint    text;
+alter table proof_cards add column if not exists predicted_domain text;
+alter table proof_cards add column if not exists residency      text;
+alter table proof_cards add column if not exists origin         text;  -- sender/source id
+alter table proof_cards add column if not exists needs_review   boolean not null default false;
+```
+Sub-project 2 then adds the `corrections` table, the recategorize endpoint +
+UI, the learned per-sender map, and the prompt few-shot/fine-tune pipeline.
+**No feedback logic is built in this sub-project** — only the data capture.
 
 ## Testing strategy
 **Offline (no network / stubbed `fetch` / pure):**
@@ -215,17 +256,24 @@ capture
   cloud). Surface clearly.
 - **Feed for encrypted cards:** the operator-facing server decrypts for display;
   there is no anon/public access to sensitive cards (they're never public).
-- **Residual risk of hint-based routing (accepted):** routing decides *before*
-  the LLM runs, on a heuristic hint. A genuinely sensitive capture that the hint
-  mis-reads as `business` will be sent to the **cloud** model for inference
-  (at-rest encryption still applies once the LLM classifies it non-business, but
-  the inference already left the machine). The two-pass "classify locally first"
-  option would close this gap; it was **declined** (doubles calls for business
-  captures). This is the explicit trade-off of hint+source routing. Mitigations:
-  the hint errs toward `unknown`→local on absence of signal, and `source` can
-  pin known-personal sources (e.g. a personal mailbox) to local regardless.
-- **Scope / phasing:** this spec is large but cohesive. Suggested plan phases:
-  (A) registry + interface + Ollama/OpenAI + schema-project + regression;
-  (B) router + fail-closed + residency + override-ack;
-  (C) at-rest encryption + schema migration + privacy-audit extension + UI chip.
-  Each phase is independently testable.
+- **Residual risk of hint-based routing (mitigated, with a planned closer):**
+  routing decides *before* the LLM runs, on a heuristic hint. A genuinely
+  sensitive capture that the hint mis-reads as `business` would be sent to the
+  **cloud** model for inference. Mitigations in this build: hint errs toward
+  `unknown`→local on absence of signal; **source-pinning** forces trusted-personal
+  sources to local regardless of hint; the **feedback loop** (sub-project 2)
+  learns per-sender corrections so a mixed mailbox converges. **Two-pass**
+  (classify locally first, then route the full generation) is the definitive
+  closer and is a **planned optional addition (Phase D)** — enabled by a config
+  flag for users who want the strongest guarantee at the cost of an extra local
+  call on business captures.
+- **Scope / phasing:** this spec is **sub-project 1** of two (sub-project 2 =
+  categorization-feedback/finetuning loop, separate spec). Plan phases:
+  - **A** — registry + unified interface + Ollama/OpenAI + schema-project + regression.
+  - **B** — router (override → source-pin → hint-rule → default) + fail-closed +
+    residency + override-ack.
+  - **C** — at-rest encryption + schema migration (incl. feedback-readiness
+    columns) + privacy-audit extension + UI residency chip.
+  - **D** (optional) — two-pass classify-then-route behind `KINETIC_TWO_PASS`.
+  Each phase is independently testable; Phase A is verifiable live against the
+  operator's local Ollama.
