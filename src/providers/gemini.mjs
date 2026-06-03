@@ -74,7 +74,7 @@ function toGeminiSchema(node) {
  * @param {{ text: string, image_caption?: string }} input
  * @returns {Promise<{ admin_tasks: any[], proof_card: any }>}
  */
-export async function process(input) {
+export async function process(input, opts = {}) {
   const apiKey = _node.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY not set. Run with KINETIC_PROVIDER=mock or set the key.");
@@ -83,10 +83,14 @@ export async function process(input) {
   const schema = await loadSchema();
   const geminiSchema = toGeminiSchema(schema);
 
-  const filled = promptTemplate
+  let filled = promptTemplate
     .replace("{{SCHEMA_INLINE}}", JSON.stringify(schema, null, 2))
     .replace("{{TEXT}}", input.text || "")
     .replace("{{IMAGE_CAPTION}}", input.image_caption || "");
+
+  if (opts.feedback) filled += `\n\nYour previous output was invalid: ${opts.feedback}\nReturn corrected JSON only.`;
+
+  const model = opts.model || DEFAULT_MODEL;
 
   const body = {
     contents: [{ role: "user", parts: [{ text: filled }] }],
@@ -97,7 +101,7 @@ export async function process(input) {
     },
   };
 
-  const url = `${API_BASE}/models/${DEFAULT_MODEL}:generateContent?key=${apiKey}`;
+  const url = `${API_BASE}/models/${model}:generateContent?key=${apiKey}`;
 
   // Retry transient errors (429 rate limit, 5xx) with exponential backoff.
   // Free-tier limit on gemini-2.5-flash is 5 requests / minute, so 429 is

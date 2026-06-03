@@ -166,7 +166,7 @@ function capitalize(s) {
  * @param {{ text: string, image_caption?: string }} input
  * @returns {Promise<{ admin_tasks: any[], proof_card: any }>}
  */
-export async function process(input) {
+export async function process(input, _opts = {}) {
   const text = (input.text || "").trim();
   const caption = (input.image_caption || "").trim();
   const seed = `${text}|${caption}`;
