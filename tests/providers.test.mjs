@@ -63,5 +63,35 @@ await test("ollama: builds /api/chat request with format and parses content", as
   assert.equal(out.proof_card.activity_type, "build");
 });
 
+await test("openai: builds chat/completions request and parses JSON content", async () => {
+  const { process: run } = await import("../src/providers/openai.mjs");
+  process.env.OPENAI_API_KEY = "sk-test";
+  const validOutput = {
+    admin_tasks: [],
+    proof_card: {
+      id: "proof_abc123", title: "Card", summary: "s".repeat(25), tech_tags: [],
+      time_to_resolution_minutes: null, impact_metric: null,
+      domain: "business", activity_type: "fix", visual_theme: "midnight", narrative: "n".repeat(45),
+    },
+  };
+  let captured;
+  const stub = async (url, opts) => {
+    captured = { url, auth: opts.headers.Authorization, body: JSON.parse(opts.body) };
+    return jsonResponse({ choices: [{ message: { content: JSON.stringify(validOutput) } }] });
+  };
+  const out = await withFetch(stub, () => run({ text: "fixed the bug" }, { model: "gpt-4o-mini" }));
+  assert.equal(captured.url, "https://api.openai.com/v1/chat/completions");
+  assert.match(captured.auth, /Bearer sk-test/);
+  assert.equal(captured.body.model, "gpt-4o-mini");
+  assert.equal(captured.body.response_format.type, "json_object");
+  assert.equal(out.proof_card.activity_type, "fix");
+});
+
+await test("openai: missing key throws", async () => {
+  delete process.env.OPENAI_API_KEY;
+  const { process: run } = await import("../src/providers/openai.mjs");
+  await assert.rejects(() => run({ text: "x" }), /OPENAI_API_KEY/);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
