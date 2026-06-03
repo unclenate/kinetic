@@ -93,5 +93,47 @@ await test("openai: missing key throws", async () => {
   await assert.rejects(() => run({ text: "x" }), /OPENAI_API_KEY/);
 });
 
+await test("registry: lists providers and reports residency", async () => {
+  const reg = await import("../src/providers/registry.mjs");
+  assert.ok(reg.listProviders().includes("ollama"));
+  assert.equal(reg.residencyOf("ollama"), "local");
+  assert.equal(reg.residencyOf("openai"), "cloud");
+  assert.equal(reg.residencyOf("mock"), "local");
+});
+
+await test("registry: getProvider throws on unknown name", async () => {
+  const reg = await import("../src/providers/registry.mjs");
+  await assert.rejects(() => reg.getProvider("myspace"), /unknown provider/i);
+});
+
+await test("registry: runProvider returns valid mock output", async () => {
+  const reg = await import("../src/providers/registry.mjs");
+  const out = await reg.runProvider("mock", { text: "shipped the dashboard to prod" });
+  assert.equal(out.proof_card.domain, "business");
+  assert.ok(Array.isArray(out.admin_tasks));
+});
+
+await test("registry: runProvider retries once on invalid output then succeeds", async () => {
+  const reg = await import("../src/providers/registry.mjs");
+  process.env.OPENAI_API_KEY = "sk-test";
+  const validOutput = {
+    admin_tasks: [],
+    proof_card: {
+      id: "proof_abc123", title: "Card", summary: "s".repeat(25), tech_tags: [],
+      time_to_resolution_minutes: null, impact_metric: null,
+      domain: "business", activity_type: "build", visual_theme: "neon", narrative: "n".repeat(45),
+    },
+  };
+  let call = 0;
+  const stub = async () => {
+    call++;
+    const content = call === 1 ? JSON.stringify({ bogus: true }) : JSON.stringify(validOutput);
+    return jsonResponse({ choices: [{ message: { content } }] });
+  };
+  const out = await withFetch(stub, () => reg.runProvider("openai", { text: "x" }));
+  assert.equal(call, 2, "retried exactly once");
+  assert.equal(out.proof_card.activity_type, "build");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
