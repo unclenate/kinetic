@@ -39,5 +39,29 @@ await test("projectStrict drops unsupported keywords but keeps shape", async () 
   assert.deepEqual(out.properties.n.type, ["integer", "null"]);
 });
 
+await test("ollama: builds /api/chat request with format and parses content", async () => {
+  const { process: run } = await import("../src/providers/ollama.mjs");
+  process.env.OLLAMA_BASE_URL = "http://localhost:11434";
+  const validOutput = {
+    admin_tasks: [],
+    proof_card: {
+      id: "proof_abc123", title: "Card", summary: "s".repeat(25), tech_tags: [],
+      time_to_resolution_minutes: null, impact_metric: null,
+      domain: "business", activity_type: "build", visual_theme: "neon", narrative: "n".repeat(45),
+    },
+  };
+  let captured;
+  const stub = async (url, opts) => {
+    captured = { url, body: JSON.parse(opts.body) };
+    return jsonResponse({ message: { content: JSON.stringify(validOutput) } });
+  };
+  const out = await withFetch(stub, () => run({ text: "shipped" }, { model: "llama3.1" }));
+  assert.equal(captured.url, "http://localhost:11434/api/chat");
+  assert.equal(captured.body.model, "llama3.1");
+  assert.equal(captured.body.stream, false);
+  assert.ok(captured.body.format && captured.body.format.type === "object", "format carries the projected schema");
+  assert.equal(out.proof_card.activity_type, "build");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
