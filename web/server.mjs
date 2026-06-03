@@ -28,18 +28,10 @@ import { createStore } from "../src/db/store.mjs";
 import { startAuthorization, exchangeCode } from "../src/oauth/index.mjs";
 import { isConfigured as oauthConfigured } from "../src/oauth/providers.mjs";
 import { isConfigured as supabaseConfigured } from "../src/db/supabase.mjs";
+import { runProvider, residencyOf } from "../src/providers/registry.mjs";
 
 const PORT = parseInt(process.env.PORT || "5173", 10);
 const PROVIDER_NAME = process.env.KINETIC_PROVIDER || "mock";
-
-async function loadProvider(name) {
-  switch (name) {
-    case "mock":   return import("../src/providers/mock.mjs");
-    case "gemini": return import("../src/providers/gemini.mjs");
-    case "claude": return import("../src/providers/claude.mjs");
-    default: throw new Error(`Unknown provider: ${name}`);
-  }
-}
 
 // Pluggable persistence (memory or supabase, chosen by config).
 const store = createStore();
@@ -106,7 +98,7 @@ function baseUrlFrom(req) {
   return `${proto}://${host}`;
 }
 
-async function handleProcess(req, res, provider, schema) {
+async function handleProcess(req, res, schema) {
   const raw = await readBody(req);
   let input;
   try { input = JSON.parse(raw); } catch { return send(res, 400, { error: "invalid JSON" }); }
@@ -117,7 +109,7 @@ async function handleProcess(req, res, provider, schema) {
   const t0 = Date.now();
   let output;
   try {
-    output = await provider.process({ text: input.text, image_caption: input.image_caption || "" });
+    output = await runProvider(PROVIDER_NAME, { text: input.text, image_caption: input.image_caption || "" });
   } catch (e) {
     return send(res, 502, { error: "provider error", detail: String(e.message || e) });
   }
@@ -128,7 +120,7 @@ async function handleProcess(req, res, provider, schema) {
   }
 
   const { id, output: stored } = await store.saveCard({ output, provider: PROVIDER_NAME });
-  send(res, 200, { id, output: stored, elapsedMs: Date.now() - t0, provider: PROVIDER_NAME });
+  send(res, 200, { id, output: stored, elapsedMs: Date.now() - t0, provider: PROVIDER_NAME, residency: residencyOf(PROVIDER_NAME) });
 }
 
 async function handleShare(req, res, id) {
@@ -173,7 +165,7 @@ async function handleConnections(_req, res) {
   send(res, 200, { storage: supabaseConfigured() ? "supabase" : "memory", providers: out });
 }
 
-async function handleHarvest(req, res, sourceName, provider, schema) {
+async function handleHarvest(req, res, sourceName, schema) {
   const raw = await readBody(req);
   let body;
   try { body = JSON.parse(raw); } catch { return send(res, 400, { error: "invalid JSON" }); }
@@ -216,7 +208,7 @@ async function handleHarvest(req, res, sourceName, provider, schema) {
     const t0 = Date.now();
     let output;
     try {
-      output = await provider.process({ text: item.text, image_caption: item.image_caption || "" });
+      output = await runProvider(PROVIDER_NAME, { text: item.text, image_caption: item.image_caption || "" });
     } catch (e) {
       results.push({ source_id: item.source_id, error: String(e.message || e) });
       continue;
@@ -313,7 +305,6 @@ async function handleOAuthCallback(_req, res, provider, url) {
 }
 
 async function main() {
-  const provider = await loadProvider(PROVIDER_NAME);
   const schema = await loadKineticSchema();
 
   const server = createServer(async (req, res) => {
@@ -326,10 +317,10 @@ async function main() {
       if (req.method === "GET" && p === "/health")    return send(res, 200, { ok: true, provider: PROVIDER_NAME, backend: store.backend, cards: store.size ?? null });
       if (req.method === "GET" && p === "/api/cards")  return handleCardList(req, res);
       if (req.method === "GET" && p === "/api/connections") return handleConnections(req, res);
-      if (req.method === "POST" && p === "/api/process") return handleProcess(req, res, provider, schema);
+      if (req.method === "POST" && p === "/api/process") return handleProcess(req, res, schema);
 
       const harvestMatch = p.match(/^\/api\/harvest\/([a-z0-9_]+)$/);
-      if (req.method === "POST" && harvestMatch) return handleHarvest(req, res, harvestMatch[1], provider, schema);
+      if (req.method === "POST" && harvestMatch) return handleHarvest(req, res, harvestMatch[1], schema);
 
       const shareMatch = p.match(/^\/api\/share\/([a-f0-9]{6,16})$/);
       if (req.method === "POST" && shareMatch) return handleShare(req, res, shareMatch[1]);

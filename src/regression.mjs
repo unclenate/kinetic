@@ -14,18 +14,9 @@
 
 import { readFile } from "node:fs/promises";
 import { validate, loadKineticSchema } from "./validate.mjs";
+import { runProvider, listProviders } from "./providers/registry.mjs";
 
 const providerName = process.env.KINETIC_PROVIDER || "mock";
-
-async function loadProvider(name) {
-  switch (name) {
-    case "mock":   return import("./providers/mock.mjs");
-    case "gemini": return import("./providers/gemini.mjs");
-    case "claude": return import("./providers/claude.mjs");
-    default:
-      throw new Error(`Unknown provider: ${name}. Use mock | gemini | claude.`);
-  }
-}
 
 async function loadRegressionInputs() {
   const url = new URL("../tests/regression-inputs.jsonl", import.meta.url);
@@ -42,7 +33,9 @@ function fmtPct(n, d) {
 }
 
 async function main() {
-  const provider = await loadProvider(providerName);
+  if (!listProviders().includes(providerName)) {
+    throw new Error(`Unknown provider: ${providerName}. Use ${listProviders().join(" | ")}.`);
+  }
   const schema = await loadKineticSchema();
   const inputs = await loadRegressionInputs();
 
@@ -57,7 +50,7 @@ async function main() {
     const t0 = Date.now();
     let output, err;
     try {
-      output = await provider.process(input);
+      output = await runProvider(providerName, input);
     } catch (e) {
       err = e;
     }
