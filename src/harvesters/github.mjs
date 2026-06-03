@@ -39,6 +39,24 @@ export async function harvest({ username, max = 5, sinceHours = 168 }) {
     if (item) items.push(item);
     if (items.length >= max) break;
   }
+
+  // The events feed strips PR objects down to {url,id,number,head,base} — no
+  // title/body. Enrich PR items best-effort from the full PR object. Any
+  // failure (rate limit, network) keeps the reliable base text.
+  for (const item of items) {
+    const enrich = item._enrich;
+    delete item._enrich;
+    if (!enrich || !enrich.apiUrl) continue;
+    try {
+      const d = await fetch(enrich.apiUrl, { headers });
+      if (!d.ok) continue;
+      const pr = await d.json();
+      if (pr && pr.title) {
+        const body = pr.body ? ` ${String(pr.body).replace(/\s+/g, " ").trim().slice(0, 280)}` : "";
+        item.text = `${capitalize(enrich.action)} pull request ${enrich.repo}#${enrich.number}: "${pr.title}".${body}`.trim();
+      }
+    } catch { /* keep base text */ }
+  }
   return items;
 }
 
@@ -59,24 +77,31 @@ function mapEvent(ev) {
       };
     }
     case "PullRequestEvent": {
+      // The events feed's pull_request is reduced (no title/body/html_url).
+      // Build a reliable base from action + repo + number; harvest() enriches
+      // the title best-effort from pr.url.
       const pr = ev.payload?.pull_request;
       const action = ev.payload?.action || "updated";
-      if (!pr) return null;
+      const number = ev.payload?.number ?? pr?.number;
+      if (!number) return null;
       return {
         source_id: `gh-pr-${ev.id}`,
-        text: `${capitalize(action)} pull request in ${repo}: "${pr.title}". ${pr.body ? pr.body.slice(0, 280) : ""}`.trim(),
-        image_caption: pr.html_url ? `PR ${pr.html_url}` : "",
+        text: `${capitalize(action)} pull request ${repo}#${number}.`,
+        image_caption: `PR https://github.com/${repo}/pull/${number}`,
         occurred_at: when,
+        _enrich: { apiUrl: pr?.url, repo, number, action },
       };
     }
     case "PullRequestReviewEvent": {
       const pr = ev.payload?.pull_request;
-      if (!pr) return null;
+      const number = pr?.number ?? ev.payload?.number;
+      if (!number) return null;
       return {
         source_id: `gh-review-${ev.id}`,
-        text: `Reviewed pull request in ${repo}: "${pr.title}".`,
-        image_caption: "",
+        text: `Reviewed pull request ${repo}#${number}.`,
+        image_caption: `PR https://github.com/${repo}/pull/${number}`,
         occurred_at: when,
+        _enrich: { apiUrl: pr?.url, repo, number, action: "reviewed" },
       };
     }
     case "IssuesEvent": {

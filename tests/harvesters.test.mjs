@@ -238,6 +238,50 @@ await test("outlook_sent: maps a sent message to a capture", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// github — events API returns a REDUCED pull_request (no title/body/html_url).
+// The harvester must not emit "undefined", and should enrich the title via a
+// best-effort follow-up fetch to the PR's api url.
+// ---------------------------------------------------------------------------
+
+function recentIso() { return new Date(Date.now() - 3600 * 1000).toISOString(); }
+
+await test("github: reduced PullRequestEvent never emits 'undefined'", async () => {
+  const { harvest } = await import("../src/harvesters/github.mjs");
+  const events = [{
+    id: "E1", type: "PullRequestEvent", created_at: recentIso(),
+    repo: { name: "unclenate/auto-harness" },
+    payload: {
+      action: "opened", number: 94,
+      pull_request: { url: "https://api.github.com/repos/unclenate/auto-harness/pulls/94", id: 1, number: 94, head: {}, base: {} },
+    },
+  }];
+  // events list ok; PR-detail enrichment fetch fails → base text only, no title
+  const stub = async (url) => (url.includes("/events/public") ? jsonResponse(events) : jsonResponse({}, 404));
+  const items = await withFetch(stub, () => harvest({ username: "unclenate", max: 5 }));
+  assert.equal(items.length, 1);
+  assert.ok(!/undefined/.test(items[0].text), `no 'undefined' in text (got: ${items[0].text})`);
+  assert.match(items[0].text, /unclenate\/auto-harness#94/);
+});
+
+await test("github: PR event enriches the title via a follow-up fetch", async () => {
+  const { harvest } = await import("../src/harvesters/github.mjs");
+  const events = [{
+    id: "E2", type: "PullRequestEvent", created_at: recentIso(),
+    repo: { name: "o/r" },
+    payload: {
+      action: "opened", number: 7,
+      pull_request: { url: "https://api.github.com/repos/o/r/pulls/7", number: 7, head: {}, base: {} },
+    },
+  }];
+  const stub = async (url) => (url.includes("/events/public")
+    ? jsonResponse(events)
+    : jsonResponse({ title: "Add retry with backoff", body: "Makes the client resilient." }));
+  const items = await withFetch(stub, () => harvest({ username: "o", max: 5 }));
+  assert.match(items[0].text, /Add retry with backoff/);
+  assert.ok(!/undefined/.test(items[0].text));
+});
+
+// ---------------------------------------------------------------------------
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
