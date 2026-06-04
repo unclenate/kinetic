@@ -6,13 +6,17 @@
 //
 // Interface:
 //   store.backend                       -> "memory" | "supabase"
-//   store.saveCard({ output, provider, source }) -> { id, output }
+//   store.saveCard({ output, provider, source, sensitive, hint, residency, origin }) -> { id, output }
 //   store.getCard(id)                    -> record | null
 //   store.shareCard(id)                  -> record | null
+//   store.listCards()                    -> record[] (newest first)
 //
-// `record` shape: { output, createdAt, isPublic, provider?, source? }
+// `record` shape: { output, createdAt, isPublic, provider?, source?, encrypted }
 // saveCard owns the id namespace: it assigns the short card id and rewrites the
-// proof_card / admin_task ids so every backend is consistent.
+// proof_card / admin_task ids so every backend is consistent. When `sensitive`,
+// the supabase backend stores `output` as AES-256-GCM ciphertext (`output_enc`,
+// `encrypted=true`) and decrypts on read; memory holds plaintext but mirrors the
+// flag (ADR-0006). `hint`/`residency`/`origin` are persisted as feedback signals.
 
 import { randomBytes } from "node:crypto";
 import * as supabase from "./supabase.mjs";
