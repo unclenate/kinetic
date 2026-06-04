@@ -28,10 +28,36 @@ import { createStore } from "../src/db/store.mjs";
 import { startAuthorization, exchangeCode } from "../src/oauth/index.mjs";
 import { isConfigured as oauthConfigured } from "../src/oauth/providers.mjs";
 import { isConfigured as supabaseConfigured } from "../src/db/supabase.mjs";
-import { runProvider, residencyOf } from "../src/providers/registry.mjs";
+import { runProvider, residencyOf, isAvailable } from "../src/providers/registry.mjs";
+import { resolve as resolveRoute } from "../src/providers/router.mjs";
+import { hintFromKeywords } from "../src/harvesters/domain-hint.mjs";
 
 const PORT = parseInt(process.env.PORT || "5173", 10);
 const PROVIDER_NAME = process.env.KINETIC_PROVIDER || "mock";
+
+// KINETIC_PROVIDER forces a single provider unless it is "auto"; "auto" engages
+// per-capture privacy routing. Default ("mock") forces mock — the zero-setup demo.
+// A forced provider is an operator-level choice, so it carries cloud-ack implicitly.
+function globalOverride() {
+  return (PROVIDER_NAME && PROVIDER_NAME !== "auto")
+    ? { provider: PROVIDER_NAME, acknowledge_cloud: true }
+    : {};
+}
+
+// Resolve the route for a capture, enforcing cloud-ack and fail-closed. Returns
+// the decision on success, or sends an error response and returns null.
+async function routeOrReject(res, { source, domainHint, override }) {
+  const decision = resolveRoute({ source, domainHint, override });
+  if (decision.requiresCloudAck) {
+    send(res, 400, { error: "sensitive capture to cloud requires acknowledgment", domain_hint: domainHint, residency: decision.residency });
+    return null;
+  }
+  if (decision.sensitive && decision.residency === "local" && !(await isAvailable(decision.provider))) {
+    send(res, 503, { error: "local provider unavailable", held: true, provider: decision.provider, domain_hint: domainHint });
+    return null;
+  }
+  return decision;
+}
 
 // Pluggable persistence (memory or supabase, chosen by config).
 const store = createStore();
@@ -107,9 +133,19 @@ async function handleProcess(req, res, schema) {
   }
 
   const t0 = Date.now();
+  const domainHint = hintFromKeywords(input.text);
+  const override = {
+    ...globalOverride(),
+    ...(input.provider ? { provider: input.provider } : {}),
+    ...(input.model ? { model: input.model } : {}),
+    ...(input.acknowledge_cloud ? { acknowledge_cloud: true } : {}),
+  };
+  const decision = await routeOrReject(res, { source: "manual", domainHint, override });
+  if (!decision) return;
+
   let output;
   try {
-    output = await runProvider(PROVIDER_NAME, { text: input.text, image_caption: input.image_caption || "" });
+    output = await runProvider(decision.provider, { text: input.text, image_caption: input.image_caption || "" }, decision.model ? { model: decision.model } : {});
   } catch (e) {
     return send(res, 502, { error: "provider error", detail: String(e.message || e) });
   }
@@ -119,8 +155,8 @@ async function handleProcess(req, res, schema) {
     return send(res, 502, { error: "provider returned invalid output", errors: v.errors });
   }
 
-  const { id, output: stored } = await store.saveCard({ output, provider: PROVIDER_NAME });
-  send(res, 200, { id, output: stored, elapsedMs: Date.now() - t0, provider: PROVIDER_NAME, residency: residencyOf(PROVIDER_NAME) });
+  const { id, output: stored } = await store.saveCard({ output, provider: decision.provider });
+  send(res, 200, { id, output: stored, elapsedMs: Date.now() - t0, provider: decision.provider, model: decision.model, residency: decision.residency });
 }
 
 async function handleShare(req, res, id) {
@@ -206,9 +242,19 @@ async function handleHarvest(req, res, sourceName, schema) {
   const results = [];
   for (const item of items.slice(0, PROCESS_CAP)) {
     const t0 = Date.now();
+    const domainHint = item.provider_domain_hint || "unknown";
+    const decision = resolveRoute({ source: sourceName, domainHint, override: globalOverride() });
+    if (decision.requiresCloudAck) {
+      results.push({ source_id: item.source_id, error: "sensitive capture to cloud requires acknowledgment" });
+      continue;
+    }
+    if (decision.sensitive && decision.residency === "local" && !(await isAvailable(decision.provider))) {
+      results.push({ source_id: item.source_id, error: `local provider unavailable (${decision.provider})` });
+      continue;
+    }
     let output;
     try {
-      output = await runProvider(PROVIDER_NAME, { text: item.text, image_caption: item.image_caption || "" });
+      output = await runProvider(decision.provider, { text: item.text, image_caption: item.image_caption || "" }, decision.model ? { model: decision.model } : {});
     } catch (e) {
       results.push({ source_id: item.source_id, error: String(e.message || e) });
       continue;

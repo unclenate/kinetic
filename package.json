@@ -8,8 +8,9 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node src/validate.mjs --selftest && node src/regression.mjs && node tests/harvesters.test.mjs && node tests/oauth.test.mjs && node tests/store.test.mjs && node tests/m10.test.mjs && node tests/providers.test.mjs",
+    "test": "node src/validate.mjs --selftest && node src/regression.mjs && node tests/harvesters.test.mjs && node tests/oauth.test.mjs && node tests/store.test.mjs && node tests/m10.test.mjs && node tests/providers.test.mjs && node tests/router.test.mjs",
     "providers:test": "node tests/providers.test.mjs",
+    "router:test": "node tests/router.test.mjs",
     "regression": "node src/regression.mjs",
     "regression:gemini": "KINETIC_PROVIDER=gemini node src/regression.mjs",
     "regression:claude": "KINETIC_PROVIDER=claude node src/regression.mjs",
