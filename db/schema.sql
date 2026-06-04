@@ -40,7 +40,9 @@ create table if not exists captures (
   user_id       uuid references users(id) on delete cascade,
   source        text not null,             -- 'github','gcal','gdrive','onedrive','outlook_sent','manual',...
   source_id     text,                      -- upstream id (e.g. calendar event id)
-  raw_text      text not null,
+  raw_text      text,                      -- null when encrypted (see raw_text_enc)
+  raw_text_enc  text,                      -- AES-256-GCM ciphertext of raw_text (Phase C)
+  encrypted     boolean not null default false,
   image_caption text,
   occurred_at   timestamptz,
   created_at    timestamptz not null default now()
@@ -51,11 +53,18 @@ create table if not exists proof_cards (
   capture_id     uuid references captures(id) on delete cascade,  -- nullable: typed captures may skip the captures row in v0.5
   user_id        uuid references users(id) on delete cascade,
   slug           text unique not null,     -- short id used by /proof/:slug and /api/cards/:slug
-  output         jsonb not null,           -- full LLM payload, schema-validated server-side
+  output         jsonb,                    -- full LLM payload (null when encrypted; see output_enc)
+  output_enc     text,                     -- AES-256-GCM ciphertext of `output` when encrypted (Phase C)
+  encrypted      boolean not null default false,  -- true for sensitive (non-business / local-routed) cards
   domain         text not null,            -- denormalized for fast filtering
   activity_type  text not null,
   provider       text,                     -- LLM provider that generated the card
   source         jsonb,                    -- harvester provenance, when applicable
+  domain_hint    text,                     -- pre-LLM routing hint (feedback signal)
+  predicted_domain text,                   -- the LLM's domain output (feedback signal)
+  residency      text,                     -- 'local' | 'cloud' where inference ran
+  origin         text,                     -- sender/source identifier (feedback signal)
+  needs_review   boolean not null default false,  -- set when the hint was 'unknown'
   is_public      boolean not null default false,
   created_at     timestamptz not null default now()
 );
