@@ -152,7 +152,8 @@ async function handleProcess(req, res, schema) {
     return send(res, 502, { error: "provider returned invalid output", errors: v.errors });
   }
 
-  const { id, output: stored } = await store.saveCard({ output, provider: decision.provider });
+  const persistSensitive = output.proof_card.domain !== "business" || decision.residency === "local";
+  const { id, output: stored } = await store.saveCard({ output, provider: decision.provider, sensitive: persistSensitive, hint: domainHint, residency: decision.residency });
   send(res, 200, { id, output: stored, elapsedMs: Date.now() - t0, provider: decision.provider, model: decision.model, residency: decision.residency });
 }
 
@@ -261,9 +262,14 @@ async function handleHarvest(req, res, sourceName, schema) {
       results.push({ source_id: item.source_id, error: "invalid output", errors: v.errors });
       continue;
     }
+    const persistSensitive = output.proof_card.domain !== "business" || decision.residency === "local";
     const { id, output: stored } = await store.saveCard({
       output,
       provider: decision.provider,
+      sensitive: persistSensitive,
+      hint: domainHint,
+      residency: decision.residency,
+      origin: item.source_id || null,
       source: { name: sourceName, source_id: item.source_id, occurred_at: item.occurred_at || null, domain_hint: item.provider_domain_hint || null },
     });
     results.push({ source_id: item.source_id, id, output: stored, elapsedMs: Date.now() - t0, provider: decision.provider, model: decision.model, residency: decision.residency });
