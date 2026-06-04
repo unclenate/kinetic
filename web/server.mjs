@@ -29,7 +29,7 @@ import { startAuthorization, exchangeCode } from "../src/oauth/index.mjs";
 import { isConfigured as oauthConfigured } from "../src/oauth/providers.mjs";
 import { isConfigured as supabaseConfigured } from "../src/db/supabase.mjs";
 import { runProvider, residencyOf, isAvailable } from "../src/providers/registry.mjs";
-import { resolve as resolveRoute } from "../src/providers/router.mjs";
+import { resolve as resolveRoute, buildOverride } from "../src/providers/router.mjs";
 import { hintFromKeywords } from "../src/harvesters/domain-hint.mjs";
 
 const PORT = parseInt(process.env.PORT || "5173", 10);
@@ -134,12 +134,9 @@ async function handleProcess(req, res, schema) {
 
   const t0 = Date.now();
   const domainHint = hintFromKeywords(input.text);
-  const override = {
-    ...globalOverride(),
-    ...(input.provider ? { provider: input.provider } : {}),
-    ...(input.model ? { model: input.model } : {}),
-    ...(input.acknowledge_cloud ? { acknowledge_cloud: true } : {}),
-  };
+  // A per-request provider override is the user's explicit choice and carries its
+  // own acknowledge_cloud; it must NOT inherit the operator's forced-provider ack.
+  const override = buildOverride(globalOverride(), input);
   const decision = await routeOrReject(res, { source: "manual", domainHint, override });
   if (!decision) return;
 
@@ -266,10 +263,10 @@ async function handleHarvest(req, res, sourceName, schema) {
     }
     const { id, output: stored } = await store.saveCard({
       output,
-      provider: PROVIDER_NAME,
+      provider: decision.provider,
       source: { name: sourceName, source_id: item.source_id, occurred_at: item.occurred_at || null, domain_hint: item.provider_domain_hint || null },
     });
-    results.push({ source_id: item.source_id, id, output: stored, elapsedMs: Date.now() - t0 });
+    results.push({ source_id: item.source_id, id, output: stored, elapsedMs: Date.now() - t0, provider: decision.provider, model: decision.model, residency: decision.residency });
   }
 
   send(res, 200, {

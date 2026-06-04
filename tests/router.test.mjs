@@ -90,5 +90,28 @@ await test("router: local/cloud providers are configurable via env", async () =>
   process.env.KINETIC_LOCAL_PROVIDER = "ollama";
 });
 
+await test("buildOverride: user provider override does NOT inherit forced ack", async () => {
+  const { buildOverride } = await import("../src/providers/router.mjs");
+  // operator forced mock (acked); user overrides to claude -> must drop the ack
+  assert.deepEqual(buildOverride({ provider: "mock", acknowledge_cloud: true }, { provider: "claude" }), { provider: "claude" });
+  // user override can carry its own ack + model
+  assert.deepEqual(buildOverride({ provider: "mock", acknowledge_cloud: true }, { provider: "claude", model: "x", acknowledge_cloud: true }), { provider: "claude", model: "x", acknowledge_cloud: true });
+  // no body override -> use forced (keeps its ack); model from body honored
+  assert.deepEqual(buildOverride({ provider: "mock", acknowledge_cloud: true }, { model: "y" }), { provider: "mock", acknowledge_cloud: true, model: "y" });
+  // routing mode (no forced, no body) -> empty
+  assert.deepEqual(buildOverride({}, {}), {});
+});
+
+await test("router: forced provider + user cloud override on sensitive still requires ack", async () => {
+  const { buildOverride, resolve } = await import("../src/providers/router.mjs");
+  process.env.KINETIC_CLOUD_PROVIDER = "claude";
+  // Reproduces the reviewed bypass: KINETIC_PROVIDER=mock forces mock (acked),
+  // but a user body override to a cloud provider on a sensitive capture must 400.
+  const override = buildOverride({ provider: "mock", acknowledge_cloud: true }, { provider: "claude" });
+  const d = resolve({ source: "manual", domainHint: "personal", override });
+  assert.equal(d.provider, "claude");
+  assert.equal(d.requiresCloudAck, true);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

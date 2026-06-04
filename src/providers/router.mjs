@@ -28,6 +28,29 @@ export function isSensitive(domainHint, source) {
 }
 
 /**
+ * Build the routing override for a request. A per-request provider override is
+ * the USER's explicit choice and must carry its OWN `acknowledge_cloud` — it does
+ * NOT inherit the operator's forced-provider acknowledgment (otherwise the
+ * cloud-ack gate could be bypassed). When the body has no provider override, the
+ * operator's forced override (which carries its ack) is used, or `{}` to let
+ * routing decide. A `model` hint from the body is always honored.
+ * @param {{ provider?: string, acknowledge_cloud?: boolean }} forced
+ * @param {{ provider?: string, model?: string, acknowledge_cloud?: boolean }} body
+ * @returns {{ provider?: string, model?: string, acknowledge_cloud?: boolean }}
+ */
+export function buildOverride(forced = {}, body = {}) {
+  if (body.provider) {
+    const o = { provider: body.provider };
+    if (body.model) o.model = body.model;
+    if (body.acknowledge_cloud) o.acknowledge_cloud = true;
+    return o;
+  }
+  const o = { ...forced };
+  if (body.model) o.model = body.model;
+  return o;
+}
+
+/**
  * @param {{ source?: string, domainHint?: string, override?: { provider?: string, model?: string, acknowledge_cloud?: boolean } }} input
  * @returns {{ provider: string, model: string|null, residency: "local"|"cloud", sensitive: boolean, requiresCloudAck: boolean }}
  */
