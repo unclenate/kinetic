@@ -4,10 +4,10 @@
 // The hint is a SOFT signal, not a hard label: harvesters attach it so a later
 // classifier (the LLM, or a privacy pre-screen) has a starting guess derived
 // from cheap metadata — recipient domains, file location, subject keywords.
-// The authoritative `domain` still comes from the LLM contract. When in doubt
-// these helpers default to "business", because Kinetic is professional-first
-// and the harvested sources (work mail, work calendar, work drives) skew that
-// way. Ambiguous-default safety is tracked in docs/knowledge/shared-observations.md.
+// The authoritative `domain` still comes from the LLM contract. When there is
+// no positive signal these helpers return "unknown" (the router treats unknown
+// as sensitive → local; ADR-0003 / routing spec). Ambiguous-default safety is
+// tracked in docs/knowledge/shared-observations.md.
 //
 // The filename uses a hyphen so the server's harvest route regex
 // (`/api/harvest/([a-z0-9_]+)`) can never resolve it as a harvester.
@@ -42,11 +42,11 @@ export function domainOf(email) {
  * recipient domain is a free-mail provider, guess "personal"; otherwise the
  * presence of any organizational domain suggests work.
  * @param {Array<string>} addresses
- * @returns {"business"|"personal"}
+ * @returns {"business"|"personal"|"unknown"}
  */
 export function hintFromEmailDomains(addresses) {
   const domains = (addresses || []).map(domainOf).filter(Boolean);
-  if (domains.length === 0) return "business";
+  if (domains.length === 0) return "unknown";
   const allFree = domains.every((d) => FREE_MAIL.has(d));
   return allFree ? "personal" : "business";
 }
@@ -55,14 +55,14 @@ export function hintFromEmailDomains(addresses) {
  * Hint from free text (subject + snippet/body). Returns the most specific
  * non-work domain whose keywords match, else "business".
  * @param {string} text
- * @returns {"business"|"personal"|"family"|"financial"|"parenting"}
+ * @returns {"business"|"personal"|"family"|"financial"|"parenting"|"unknown"}
  */
 export function hintFromKeywords(text) {
   const t = String(text || "");
   for (const [re, domain] of KEYWORD_DOMAINS) {
     if (re.test(t)) return domain;
   }
-  return "business";
+  return "unknown";
 }
 
 /**
@@ -72,6 +72,6 @@ export function hintFromKeywords(text) {
  */
 export function combineHints(addresses, text) {
   const kw = hintFromKeywords(text);
-  if (kw !== "business") return kw;
+  if (kw !== "unknown") return kw;
   return hintFromEmailDomains(addresses);
 }

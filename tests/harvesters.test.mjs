@@ -46,7 +46,7 @@ function jsonResponse(obj, status = 200) {
   };
 }
 
-const DOMAINS = new Set(["business", "personal", "family", "financial", "parenting"]);
+const DOMAINS = new Set(["business", "personal", "family", "financial", "parenting", "unknown"]);
 
 /** Assert the canonical capture shape (+ M9 domain hint) on one item. */
 function assertCaptureShape(item, sourcePrefix) {
