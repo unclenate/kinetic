@@ -44,7 +44,8 @@ which bypasses Row Level Security. Vercel hosting is **planned, not built**.
 |-----------|----------------|-------|-------|
 | HTTP server (`web/server.mjs`) | Single Node `http` server; serves static `web/public/` + JSON APIs; orchestrates process/harvest/share/OAuth | @unclenate | Routes: `/api/process`, `/api/harvest/:source`, `/api/share/:id`, `/proof/:id`, `/api/cards`, `/api/cards/:id`, `/api/connections`, `/oauth/:provider/start`, `/oauth/:provider/callback`, `/health` |
 | LLM contract + validator (`schemas/kinetic-output.schema.json`, `src/validate.mjs`) | Defines and enforces the strict output JSON shape; validates every card before persist | @unclenate | Built; zero-dep regression harness in `src/regression.mjs` |
-| LLM providers (`src/providers/`) | Produce schema-conformant output from artifact text | @unclenate | `mock` (deterministic default), `claude` (Anthropic tool_use), `gemini` (response_schema) built; `ollama`, `openai` **planned** |
+| LLM providers (`src/providers/`) | Produce schema-conformant output from artifact text via a unified `process(input, opts)` contract | @unclenate | `mock` (deterministic default), `claude` (tool_use), `gemini` (response_schema), `ollama` (local, structured-output `format`), `openai` (JSON mode) — all built; live-verified against local Ollama |
+| Provider registry + router (`src/providers/registry.mjs`, `router.mjs`) | `registry` resolves a provider by name, runs it with validate+1-retry, and reports residency (local/cloud); `router` chooses the provider per capture by privacy rules (override → source-pin → hint-rule → default) | @unclenate | Built (Phase A/B). Routing active only when `KINETIC_PROVIDER=auto`; fail-closed + cloud-ack gates enforced server-side |
 | Harvesters (`src/harvesters/`) | Pull artifacts from signal sources on a common `harvest()` contract | @unclenate | `github`, `gcal`, `calendar` built and verified; `gdrive`, `onedrive`, `mscal`, `gmail_sent`, `outlook_sent` present (Microsoft-side providers gated by planned OAuth) |
 | Persistence store (`src/db/store.mjs`) | Pluggable card persistence behind one interface | @unclenate | In-memory backend by default; Supabase backend when `SUPABASE_URL` is set |
 | Supabase client (`src/db/supabase.mjs`) | Minimal PostgREST-over-`fetch` client (no SDK) | @unclenate | Service-role key only; never sent to client |
@@ -55,9 +56,15 @@ which bypasses Row Level Security. Vercel hosting is **planned, not built**.
 ## Interaction Boundaries
 
 - **Capture request boundary:** `POST /api/process` accepts artifact text (and
-  optional `image_caption`), invokes the selected provider, validates the output
-  against the schema, then persists via the store. Provider is chosen by
-  `KINETIC_PROVIDER` (default `mock`).
+  optional `image_caption`), resolves a provider, runs it (validate + one retry),
+  then persists via the store. Provider selection: `KINETIC_PROVIDER` forces a
+  single provider (default `mock`), or `=auto` engages **privacy-aware routing**
+  (`src/providers/router.mjs`) keyed on the pre-LLM `domain_hint` + source —
+  sensitive (non-business/unknown/pinned) captures route to the local provider,
+  business to the cloud provider. Two server-side gates enforce privacy:
+  fail-closed (sensitive + local provider unavailable → 503, no cloud fallback)
+  and cloud-ack (sensitive capture overridden to a cloud provider without
+  `acknowledge_cloud` → 400). The response reports the chosen `provider`/`residency`.
 - **Harvest boundary:** `POST /api/harvest/:source` invokes a harvester's
   `harvest()` contract, which returns items shaped as
   `{ source_id, text, image_caption, occurred_at, provider_domain_hint }`; each
@@ -86,17 +93,20 @@ which bypasses Row Level Security. Vercel hosting is **planned, not built**.
 | Google (Gemini + Calendar/Drive/Gmail OAuth) | LLM provider (Gemini `response_schema`); harvest source via OAuth (**live**) | Server-side API key + per-user OAuth tokens (encrypted at rest) | @unclenate |
 | GitHub (public events) | Harvest source (no auth required) | Public, unauthenticated API | @unclenate |
 | Microsoft Graph | Harvest source (Calendar/OneDrive/Outlook) — **planned** | Per-user OAuth tokens (planned) | @unclenate |
-| Ollama | Local LLM provider — **planned** | Local host | @unclenate |
-| OpenAI | LLM provider — **planned** | Server-side API key (planned) | @unclenate |
+| Ollama | Local LLM provider (built; the privacy-routing local default) | Local host (`OLLAMA_BASE_URL`, default `:11434`) | @unclenate |
+| OpenAI | LLM provider (built; JSON mode) | Server-side API key (`OPENAI_API_KEY`) | @unclenate |
 | Vercel | Hosting/deploy — **planned, not built** | N/A today | @unclenate |
 
 ## Operational Constraints
 
 - **Alpha maturity.** Built and working end-to-end: capture → process → validate
-  → persist → share → public proof page; mock/claude/gemini providers; github,
-  gcal and calendar harvesters; Google OAuth (live) with encrypted token storage
-  and refresh-on-use. Planned/not-yet-live: Microsoft OAuth and its harvesters,
-  ollama/openai providers, Vercel deployment, full Supabase Auth.
+  → persist → share → public proof page; mock/claude/gemini/ollama/openai
+  providers behind a registry; privacy-aware routing (opt-in via
+  `KINETIC_PROVIDER=auto`) with fail-closed + cloud-ack gates; github, gcal and
+  calendar harvesters; Google OAuth (live) with encrypted token storage and
+  refresh-on-use. Planned/not-yet-live: Microsoft OAuth and its harvesters,
+  at-rest encryption of sensitive persisted rows (Phase C), Vercel deployment,
+  full Supabase Auth.
 - **Zero-dependency / no build step.** No npm runtime dependencies and no
   bundler. Any new capability must be implementable with the Node standard
   library or a clearly-scoped ADR.
@@ -120,5 +130,8 @@ which bypasses Row Level Security. Vercel hosting is **planned, not built**.
 Architecture decisions are recorded as ADRs in `docs/adr/`:
 ADR-0001 (stack + composition), ADR-0002 (five-day scope expansion),
 ADR-0003 (two-dimensional categorization), ADR-0004 (real OAuth + Supabase),
-ADR-0005 (harness composition advance). Schema source of truth is
-`db/schema.sql`.
+ADR-0005 (harness composition advance). The pluggable-provider + privacy-by-design
+routing design is specified in
+`docs/superpowers/specs/2026-06-03-llm-provider-routing-design.md` and will be
+recorded as ADR-0006 when its Phase C (at-rest encryption) lands. Schema source of
+truth is `db/schema.sql`.

@@ -394,3 +394,39 @@ especially confirming the modal genuinely blocks a non-business share.
 runs in a fresh, empty process (0 public cards → trivially clean). It is only
 meaningful against Supabase (persistent). The script prints that caveat when it
 detects the memory backend.
+
+---
+
+## 2026-06-03 — Phase A/B: pluggable providers + privacy-aware routing
+
+**Context:** Spec `docs/superpowers/specs/2026-06-03-llm-provider-routing-design.md`,
+sub-project 1. Phase A (providers + registry) and Phase B (routing) landed; Phase C
+(at-rest encryption) is next.
+
+**Observations:**
+
+- **Routing keys on pre-LLM signals only.** The `domain` comes *out* of the LLM, so the
+  router decides on `provider_domain_hint` (computed from metadata) + `source`, never the
+  LLM's output. This is the structural reason routing is a heuristic, not exact.
+- **`unknown` makes "privacy as default" real.** `domain-hint` previously defaulted to
+  `business` (the permissive, public-eligible side). A no-keyword/no-email capture is
+  *uncertain*, not confirmed business — so it now returns `unknown`, and the router treats
+  `unknown` (and anything not `business`) as sensitive → local. An org email domain remains
+  a positive `business` signal. This only affects routing, not the LLM's final `domain`.
+- **Two enforcement gates, both pre-network.** Fail-closed (sensitive + chosen local
+  provider unreachable → 503 held, no cloud fallback) and cloud-ack (a sensitive capture
+  explicitly overridden to a cloud provider without `acknowledge_cloud` → 400) both fire
+  before any provider call — verified with mock-as-local and an unreachable Ollama URL.
+- **Opt-in routing preserved the zero-setup demo.** `KINETIC_PROVIDER` stays the knob: a
+  concrete value forces that provider (default `mock` = zero-setup), `auto` engages routing.
+  This avoided breaking `npm test` (mock) and the keyless demo while shipping routing.
+- **Subagent reliability is not guaranteed.** A Phase B Task-1 implementer subagent ran ~23
+  min, wrote *correct* code, then returned an off-task hallucinated summary and skipped its
+  final steps (no companion test update, no commit). The two-stage "verify the artifacts,
+  never trust the report" discipline caught it; the remaining well-specified tasks were
+  executed controller-side for reliability. Lesson: always diff + run; a subagent's prose is
+  not evidence.
+
+**Residual risk (unchanged from the spec):** a genuinely sensitive capture mis-hinted as
+`business` still reaches the cloud model for inference. Closed only by source-pinning
+(`KINETIC_LOCAL_SOURCES`), the feedback loop (sub-project 2), or Phase D two-pass.
