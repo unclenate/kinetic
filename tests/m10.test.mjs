@@ -96,5 +96,18 @@ await test("privacy audit: clean when every public card is business", async () =
   assert.equal(report.ok, true);
 });
 
+await test("privacy audit: flags a sensitive (non-business) card stored unencrypted", async () => {
+  const { auditEncryption } = await import("../tools/privacy-audit.mjs");
+  const cards = [
+    { id: "a", encrypted: true,  output: card("personal") },   // ok
+    { id: "b", encrypted: false, output: card("financial") },  // VIOLATION (sensitive, plaintext)
+    { id: "c", encrypted: false, output: card("business") },   // ok (business may be plaintext)
+  ];
+  const report = auditEncryption(cards);
+  assert.equal(report.ok, false);
+  assert.deepEqual(report.violations.map((v) => v.id), ["b"]);
+  assert.equal(report.sensitiveCount, 2);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

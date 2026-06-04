@@ -21,25 +21,48 @@ export function auditPublicCards(cards) {
   return { ok: violations.length === 0, publicCount: publicCards.length, violations };
 }
 
+/**
+ * Privacy-by-design invariant (ADR-0006): every persisted SENSITIVE (non-business)
+ * card must be encrypted at rest. A sensitive card stored in plaintext is a leak.
+ * @param {Array<{ id?: string, encrypted?: boolean, output?: any }>} cards
+ * @returns {{ ok: boolean, sensitiveCount: number, violations: Array<{id, domain}> }}
+ */
+export function auditEncryption(cards) {
+  const sensitive = (cards || []).filter((c) => c && c.output?.proof_card?.domain !== "business");
+  const violations = sensitive
+    .filter((c) => !c.encrypted)
+    .map((c) => ({ id: c.id, domain: c.output?.proof_card?.domain }));
+  return { ok: violations.length === 0, sensitiveCount: sensitive.length, violations };
+}
+
 async function main() {
   const { createStore } = await import("../src/db/store.mjs");
   const store = createStore();
   const cards = await store.listCards();
-  const report = auditPublicCards(cards);
+  const pub = auditPublicCards(cards);
+  const enc = auditEncryption(cards);
 
   console.log(`\nKinetic privacy audit`);
-  console.log(`  backend:      ${store.backend}`);
-  console.log(`  total cards:  ${cards.length}`);
-  console.log(`  public cards: ${report.publicCount}`);
+  console.log(`  backend:        ${store.backend}`);
+  console.log(`  total cards:    ${cards.length}`);
+  console.log(`  public cards:   ${pub.publicCount}`);
+  console.log(`  sensitive cards:${enc.sensitiveCount}`);
   if (store.backend === "memory") {
     console.log(`  note: in-memory backend is per-process — set SUPABASE_URL to audit persisted data.`);
   }
-  if (report.ok) {
-    console.log(`\n✓ All public cards are domain=business. Privacy gate intact.`);
+
+  if (!pub.ok) {
+    console.log(`\n✗ ${pub.violations.length} public card(s) are NOT business — privacy-gate violation:`);
+    for (const v of pub.violations) console.log(`   - ${v.id}: domain=${v.domain}`);
+  }
+  if (!enc.ok) {
+    console.log(`\n✗ ${enc.violations.length} sensitive card(s) are NOT encrypted at rest — residency violation:`);
+    for (const v of enc.violations) console.log(`   - ${v.id}: domain=${v.domain}`);
+  }
+  if (pub.ok && enc.ok) {
+    console.log(`\n✓ Public cards are domain=business AND sensitive cards are encrypted. Privacy intact.`);
     process.exit(0);
   }
-  console.log(`\n✗ ${report.violations.length} public card(s) are NOT business — privacy violation:`);
-  for (const v of report.violations) console.log(`   - ${v.id}: domain=${v.domain}`);
   process.exit(1);
 }
 
