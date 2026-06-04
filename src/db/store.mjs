@@ -16,6 +16,7 @@
 
 import { randomBytes } from "node:crypto";
 import * as supabase from "./supabase.mjs";
+import { encryptToken, decryptToken } from "../oauth/crypto.mjs";
 
 function shortId() { return randomBytes(4).toString("hex"); }
 
@@ -35,10 +36,12 @@ function createMemoryStore() {
   return {
     backend: "memory",
     get size() { return cards.size; },
-    async saveCard({ output, provider, source }) {
+    async saveCard({ output, provider, source, sensitive }) {
       const id = shortId();
       applyIds(output, id);
-      cards.set(id, { output, createdAt: new Date().toISOString(), isPublic: false, provider, source: source || null });
+      // Memory is the zero-infra demo: it holds plaintext in-process but mirrors
+      // the `encrypted` flag so the privacy audit and feed see it.
+      cards.set(id, { output, createdAt: new Date().toISOString(), isPublic: false, provider, source: source || null, encrypted: !!sensitive });
       return { id, output };
     },
     async getCard(id) {
@@ -65,28 +68,44 @@ function createMemoryStore() {
 function createSupabaseStore() {
   function mapRow(row) {
     if (!row) return null;
+    const output = row.encrypted && row.output_enc
+      ? JSON.parse(decryptToken(row.output_enc))
+      : row.output;
     return {
-      output: row.output,
+      output,
       createdAt: row.created_at,
       isPublic: !!row.is_public,
       provider: row.provider || null,
       source: row.source || null,
+      encrypted: !!row.encrypted,
     };
   }
   return {
     backend: "supabase",
-    async saveCard({ output, provider, source }) {
+    async saveCard({ output, provider, source, sensitive, hint, residency, origin }) {
       const id = shortId();
       applyIds(output, id);
-      await supabase.insert("proof_cards", {
+      const row = {
         slug: id,
-        output,
         domain: output.proof_card.domain,
         activity_type: output.proof_card.activity_type,
         is_public: false,
         provider: provider || null,
         source: source || null,
-      });
+        domain_hint: hint || null,
+        predicted_domain: output.proof_card.domain,
+        residency: residency || null,
+        origin: origin || null,
+        needs_review: hint === "unknown",
+      };
+      if (sensitive) {
+        row.output_enc = encryptToken(JSON.stringify(output));
+        row.encrypted = true;
+      } else {
+        row.output = output;
+        row.encrypted = false;
+      }
+      await supabase.insert("proof_cards", row);
       return { id, output };
     },
     async getCard(id) {

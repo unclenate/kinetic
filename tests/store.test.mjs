@@ -147,5 +147,73 @@ await test("token store: loadToken refreshes when the access token is near expir
   assert.ok(updatedBody, "persisted the refreshed token back to Supabase");
 });
 
+function mkCard(domain) {
+  return {
+    admin_tasks: [],
+    proof_card: {
+      id: "proof_x", title: "Card", summary: "s".repeat(25), tech_tags: [],
+      time_to_resolution_minutes: null, impact_metric: null,
+      domain, activity_type: "build", visual_theme: "neon", narrative: "n".repeat(45),
+    },
+  };
+}
+
+await test("supabase store: a sensitive card is stored encrypted (ciphertext, no plaintext output)", async () => {
+  process.env.KINETIC_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
+  process.env.SUPABASE_URL = "https://proj.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-key";
+  const { createStore } = await import("../src/db/store.mjs?phaseC1");
+  const store = createStore();
+  let body;
+  const stub = async (_url, opts) => { body = JSON.parse(opts.body); return jsonResponse([body], 201); };
+  await withFetch(stub, () => store.saveCard({ output: mkCard("personal"), provider: "ollama", sensitive: true, hint: "personal", residency: "local" }));
+  assert.equal(body.encrypted, true);
+  assert.ok(body.output_enc && typeof body.output_enc === "string", "output_enc ciphertext present");
+  assert.ok(body.output == null, "plaintext output column is null when encrypted");
+  assert.ok(!body.output_enc.includes("proof_card"), "ciphertext does not contain plaintext json");
+  assert.equal(body.domain, "personal");
+  assert.equal(body.residency, "local");
+  delete process.env.SUPABASE_URL; delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+});
+
+await test("supabase store: getCard decrypts an encrypted row", async () => {
+  process.env.KINETIC_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
+  process.env.SUPABASE_URL = "https://proj.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-key";
+  const { encryptToken } = await import("../src/oauth/crypto.mjs");
+  const { createStore } = await import("../src/db/store.mjs?phaseC2");
+  const store = createStore();
+  const out = mkCard("financial");
+  const row = { slug: "abc", output: null, output_enc: encryptToken(JSON.stringify(out)), encrypted: true, domain: "financial", is_public: false, created_at: "2026-06-03T00:00:00Z" };
+  const rec = await withFetch(async () => jsonResponse([row]), () => store.getCard("abc"));
+  assert.equal(rec.output.proof_card.domain, "financial", "decrypted output recovered");
+  assert.equal(rec.encrypted, true);
+  delete process.env.SUPABASE_URL; delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+});
+
+await test("supabase store: a business card stays plaintext", async () => {
+  process.env.SUPABASE_URL = "https://proj.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-key";
+  const { createStore } = await import("../src/db/store.mjs?phaseC3");
+  const store = createStore();
+  let body;
+  const stub = async (_url, opts) => { body = JSON.parse(opts.body); return jsonResponse([body], 201); };
+  await withFetch(stub, () => store.saveCard({ output: mkCard("business"), provider: "claude", sensitive: false, hint: "business", residency: "cloud" }));
+  assert.equal(body.encrypted, false);
+  assert.ok(body.output && body.output.proof_card, "plaintext output present");
+  assert.ok(body.output_enc == null);
+  delete process.env.SUPABASE_URL; delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+});
+
+await test("memory store: tracks the encrypted flag for sensitive cards", async () => {
+  delete process.env.SUPABASE_URL;
+  const { createStore } = await import("../src/db/store.mjs?phaseC4");
+  const store = createStore();
+  const { id } = await store.saveCard({ output: mkCard("personal"), provider: "ollama", sensitive: true });
+  const rec = await store.getCard(id);
+  assert.equal(rec.encrypted, true);
+  assert.equal(rec.output.proof_card.domain, "personal");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
