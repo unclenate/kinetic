@@ -430,3 +430,37 @@ sub-project 1. Phase A (providers + registry) and Phase B (routing) landed; Phas
 **Residual risk (unchanged from the spec):** a genuinely sensitive capture mis-hinted as
 `business` still reaches the cloud model for inference. Closed only by source-pinning
 (`KINETIC_LOCAL_SOURCES`), the feedback loop (sub-project 2), or Phase D two-pass.
+
+---
+
+## 2026-06-03 — Phase C: at-rest encryption closes the privacy-by-design loop
+
+**Context:** Phase A/B made inference local for sensitive captures, but persisted
+content still landed in cloud Supabase as plaintext. Phase C encrypts it.
+
+**Observations:**
+
+- **Encryption basis = `finalDomain !== "business" OR residency === "local"`.** The
+  authoritative final domain (from the LLM) widened by where inference ran. A
+  consequence: because `mock` and `ollama` are *local* providers, the default
+  mock demo encrypts *every* card (business included). That's safe over-encryption —
+  business cards stay shareable because the server decrypts on read; the cloud DB
+  only ever holds ciphertext for them. The residency chip honestly shows "on-device".
+- **The cloud DB cannot read sensitive content.** Verified live: a parenting capture
+  routed local stored `encrypted=true`, `output=null`, `output_enc=<base64>`; only
+  non-identifying `domain`/`residency`/`created_at` stay clear for filtering. The
+  server (which holds `KINETIC_TOKEN_ENCRYPTION_KEY`) decrypts for display.
+- **Memory backend mirrors the flag only.** The zero-infra demo holds plaintext
+  in-process but sets `encrypted` so the feed + privacy-audit behave identically;
+  real encryption is the Supabase path (tested via stubbed fetch: the insert body
+  carries ciphertext, never the plaintext `output`).
+- **One key now protects two things.** `KINETIC_TOKEN_ENCRYPTION_KEY` encrypts both
+  OAuth tokens (M7) and card content (Phase C). Key loss now makes both unrecoverable
+  — risk-register R-001 updated. Production wants a managed key + rotation.
+- **The audit is now two-pronged.** `tools/privacy-audit.mjs` asserts (1) public
+  cards are business (the gate) and (2) sensitive cards are encrypted at rest (the
+  residency invariant). Both run against the live store; clean over 27 rows.
+
+**Still open:** the hint-misclassification residual (a business-mis-hinted sensitive
+capture reaches the cloud model for inference) is unchanged — closed only by
+source-pinning, the feedback loop (sub-project 2), or Phase D two-pass.

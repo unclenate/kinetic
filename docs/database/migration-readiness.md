@@ -112,3 +112,15 @@ Changes to the migration directory (`db/`, primarily `db/schema.sql`) trigger a
 companion rule requiring this file to also be updated in the same PR. This ensures
 migration documentation stays current with the actual schema, including the
 documented deviations from ADR-0004.
+
+---
+
+## Applied Migrations
+
+Recorded here for traceability (Supabase also keeps its own migration history).
+`db/schema.sql` is the canonical current schema.
+
+| Date | Name | Summary |
+|------|------|---------|
+| 2026-06-03 | `kinetic_v0_5_m7_schema` | Initial v0.5 schema: `users`, `oauth_tokens`, `captures`, `proof_cards`; RLS enabled; `proof_cards` public-read-when-`is_public`. |
+| 2026-06-03 | `phase_c_at_rest_encryption` | `proof_cards`: add `output_enc`/`encrypted` + feedback columns (`domain_hint`, `predicted_domain`, `residency`, `origin`, `needs_review`), make `output` nullable. `captures`: add `raw_text_enc`/`encrypted`, make `raw_text` nullable. Backs the AES-256-GCM at-rest encryption of sensitive Proof cards (ADR-0006). Additive/non-destructive. |

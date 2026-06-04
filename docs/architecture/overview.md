@@ -102,11 +102,12 @@ which bypasses Row Level Security. Vercel hosting is **planned, not built**.
 - **Alpha maturity.** Built and working end-to-end: capture → process → validate
   → persist → share → public proof page; mock/claude/gemini/ollama/openai
   providers behind a registry; privacy-aware routing (opt-in via
-  `KINETIC_PROVIDER=auto`) with fail-closed + cloud-ack gates; github, gcal and
-  calendar harvesters; Google OAuth (live) with encrypted token storage and
-  refresh-on-use. Planned/not-yet-live: Microsoft OAuth and its harvesters,
-  at-rest encryption of sensitive persisted rows (Phase C), Vercel deployment,
-  full Supabase Auth.
+  `KINETIC_PROVIDER=auto`) with fail-closed + cloud-ack gates; AES-256-GCM
+  at-rest encryption of sensitive (non-business / local-routed) Proof cards in
+  Supabase (cloud DB sees only ciphertext; server decrypts on read); github,
+  gcal and calendar harvesters; Google OAuth (live) with encrypted token storage
+  and refresh-on-use. Planned/not-yet-live: Microsoft OAuth and its harvesters,
+  Vercel deployment, full Supabase Auth.
 - **Zero-dependency / no build step.** No npm runtime dependencies and no
   bundler. Any new capability must be implementable with the Node standard
   library or a clearly-scoped ADR.
@@ -130,8 +131,8 @@ which bypasses Row Level Security. Vercel hosting is **planned, not built**.
 Architecture decisions are recorded as ADRs in `docs/adr/`:
 ADR-0001 (stack + composition), ADR-0002 (five-day scope expansion),
 ADR-0003 (two-dimensional categorization), ADR-0004 (real OAuth + Supabase),
-ADR-0005 (harness composition advance). The pluggable-provider + privacy-by-design
-routing design is specified in
-`docs/superpowers/specs/2026-06-03-llm-provider-routing-design.md` and will be
-recorded as ADR-0006 when its Phase C (at-rest encryption) lands. Schema source of
+ADR-0005 (harness composition advance), ADR-0006 (privacy-by-design routing +
+at-rest encryption — pluggable providers, privacy-aware routing with fail-closed +
+cloud-ack, and AES-256-GCM encryption of sensitive cards at rest). Full design:
+`docs/superpowers/specs/2026-06-03-llm-provider-routing-design.md`. Schema source of
 truth is `db/schema.sql`.
