@@ -1,0 +1,8 @@
+# GitBook configuration for the Kinetic engineering + governance documentation.
+# The book root is the repository root so it can include the governance
+# entrypoints (HARNESS.md, AGENTS.md, CLAUDE.md) alongside docs/.
+root: .
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md

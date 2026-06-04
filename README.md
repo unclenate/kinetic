@@ -1,103 +1,88 @@
-# psu-hackathon — Kinetic (AutoPortfolio)
+# Kinetic (AutoPortfolio)
 
-> An AI "black box" for your professional life: drop messy work artifacts in,
-> get organized admin tasks **and** a shareable Proof-of-Skill card out.
+> An AI "black box" for your professional life: drop in a messy work artifact —
+> a note, a screenshot caption, a harvested signal — and get back an organized
+> **admin task** *and* a polished, shareable **Proof-of-Skill card**.
 
-**Stage:** Discovery → Build (PSU Hackathon v0)
-**Owner:** @unclenate
-**Hackathon submission target:** 2026-05-19
+**Stage:** v0.5 — alpha (post 5-day-track build)
+**Owner:** @unclenate (Nate DiNiro)
+**License:** UNLICENSED (private)
 
----
+Kinetic runs every capture through a strict LLM JSON contract and classifies it on
+two axes — a life **domain** (`business`, `personal`, `family`, `financial`,
+`parenting`) and an **activity type** (`build`, `fix`, `design`, …). Only
+`business` cards are eligible for the public Proof feed — the **privacy gate**.
 
-## Quickstart — run the M1 regression
+## Privacy by design
 
-Zero npm install. Zero API keys required. Pure Node ESM.
+Kinetic's defining capability: **sensitive captures stay on your machine.** When
+routing is enabled, a capture the metadata flags as non-business is processed by a
+**local** LLM (Ollama) and stored **encrypted at rest** (AES-256-GCM) in the
+database — the cloud sees only ciphertext. Business captures use a cloud model.
+Two server-side gates enforce it: *fail-closed* (a sensitive capture never falls
+back to the cloud) and *cloud-acknowledgment* (sending a sensitive capture to a
+cloud model requires explicit consent). See
+[ADR-0006](docs/adr/ADR-0006-privacy-by-design-routing-and-encryption.md).
+
+## Quickstart
+
+Zero `npm install`. Zero API keys required for the default demo. Node ≥ 18, pure ESM.
 
 ```bash
-node --version                     # need v18+
-node src/validate.mjs --selftest   # validator self-test
-node src/regression.mjs            # mock-provider regression run (M1 gate)
+npm test                 # full suite: validator + regression + harvesters + oauth + store + m10 + providers + router
+node web/server.mjs      # run the demo locally on http://localhost:5173 (mock provider, in-memory)
 ```
 
-Expected output:
-
-```
-Schema-valid:     10/10 (100.0%)
-Category match:   10/10 (100.0%)
-✓ M1 exit criterion MET for provider "mock"
-```
-
-Run against real LLMs once keys are configured:
+Run the LLM-contract regression against a real or local provider:
 
 ```bash
-cp .env.example .env.local         # add GEMINI_API_KEY and/or ANTHROPIC_API_KEY
-export $(grep -v '^#' .env.local | xargs)
-KINETIC_PROVIDER=gemini node src/regression.mjs
-KINETIC_PROVIDER=claude node src/regression.mjs
+cp .env.example .env.local        # fill in keys / set OLLAMA_MODEL as needed
+set -a; . ./.env.local; set +a
+KINETIC_PROVIDER=claude node src/regression.mjs   # or: gemini | openai | ollama | mock
 ```
 
----
+Enable privacy-aware routing (local for sensitive, cloud for business):
 
-## Where the project lives
+```bash
+KINETIC_PROVIDER=auto node web/server.mjs         # needs Ollama running + a cloud key
+```
 
-### Governance & product docs
+## What's built
 
-| Artifact | Path |
-|---|---|
-| Concept (raw) | [`docs/discovery/inbox/`](docs/discovery/inbox/) |
-| Intake questionnaire | [`docs/discovery/intake-questionnaire.md`](docs/discovery/intake-questionnaire.md) |
-| Problem statement | [`docs/product/problem-statement.md`](docs/product/problem-statement.md) |
-| Personas | [`docs/product/personas.md`](docs/product/personas.md) |
-| Requirements | [`docs/product/requirements.md`](docs/product/requirements.md) |
-| MVP scope | [`docs/discovery/mvp-scope.md`](docs/discovery/mvp-scope.md) |
-| Release intent (v0) | [`docs/product/release-intent.md`](docs/product/release-intent.md) |
-| Scope plan | [`docs/project/scope-plan.md`](docs/project/scope-plan.md) |
-| Milestones | [`docs/project/milestones.md`](docs/project/milestones.md) |
-| Change log | [`docs/project/change-log.md`](docs/project/change-log.md) |
-| Shared observations | [`docs/knowledge/shared-observations.md`](docs/knowledge/shared-observations.md) |
-| ADR-0001 (stack + composition) | [`docs/adr/ADR-0001-stack-and-composition.md`](docs/adr/ADR-0001-stack-and-composition.md) |
-| Harness manifest | [`harness.manifest.yaml`](harness.manifest.yaml) |
-| Governance platform (submodule) | [`.harness/`](.harness/) |
+This is an **alpha**; the docs mark "built" vs "planned" explicitly.
 
-### Code (M1 build)
+- **Zero-dependency Node ESM.** No build step, no npm runtime deps. A single HTTP
+  server (`web/server.mjs`) serves the UI (`web/public/`) and JSON APIs.
+- **Strict LLM contract.** `schemas/kinetic-output.schema.json` + `src/validate.mjs`
+  (the authoritative output gate) + a zero-dep regression harness.
+- **Pluggable LLM providers** behind a registry (`src/providers/`): `mock`,
+  `claude`, `gemini`, local `ollama`, `openai` — with privacy-aware routing.
+- **Persistence.** Supabase Postgres (live) via a PostgREST client, with an
+  in-memory fallback so the demo runs with zero infrastructure.
+- **Real OAuth.** Authorization-code + PKCE (Google live; Microsoft planned) with
+  OAuth tokens encrypted at rest.
+- **Eight signal harvesters** (`src/harvesters/`): GitHub, Google Calendar/Drive/
+  Gmail, Microsoft Calendar/OneDrive/Outlook, and a pasted-text seam.
 
-| Artifact | Path |
-|---|---|
-| JSON Schema (LLM output contract) | [`schemas/kinetic-output.schema.json`](schemas/kinetic-output.schema.json) |
-| Prompt template | [`prompts/capture-to-output.md`](prompts/capture-to-output.md) |
-| Regression inputs (10 fixed) | [`tests/regression-inputs.jsonl`](tests/regression-inputs.jsonl) |
-| Regression methodology | [`tests/README.md`](tests/README.md) |
-| Validator (zero-dep) | [`src/validate.mjs`](src/validate.mjs) |
-| Regression runner | [`src/regression.mjs`](src/regression.mjs) |
-| Mock LLM provider | [`src/providers/mock.mjs`](src/providers/mock.mjs) |
-| Gemini provider | [`src/providers/gemini.mjs`](src/providers/gemini.mjs) |
-| Claude fallback provider | [`src/providers/claude.mjs`](src/providers/claude.mjs) |
+## Documentation
 
----
+The full engineering and governance documentation is organized as a navigable book.
 
-## Stack (v0)
+- **Start with the [documentation reading guide](docs/README.md)** — a goal-based
+  index and the accessibility statement.
+- **[Table of contents](SUMMARY.md)** — the complete navigation.
+- Jump straight to the [Architecture Overview](docs/architecture/overview.md), the
+  [Decision Records](docs/adr/ADR-0001-stack-and-composition.md), the
+  [Milestones](docs/project/milestones.md), or the
+  [Test Strategy](docs/testing/test-strategy.md).
 
-- **Frontend:** Next.js (App Router) + TypeScript, deployed as a PWA on Vercel *(M2)*
-- **Backend:** Supabase (Postgres + Auth + Storage) + thin orchestration layer *(M2)*
-- **LLM:** Gemini (structured outputs) primary, Claude fallback ✅ *(M1)*
+Governance is enforced by the [auto-harness](https://github.com/unclenate/auto-harness)
+platform mounted at [`.harness/`](.harness/); see [`HARNESS.md`](HARNESS.md) and
+[`AGENTS.md`](AGENTS.md) for the rules of the project.
 
-Rationale: [ADR-0001](docs/adr/ADR-0001-stack-and-composition.md).
+## Project status
 
-The M1 harness ships as zero-dependency Node ESM (`.mjs`) so it can run without
-`npm install`. TypeScript migration is captured as a follow-up in
-[`docs/knowledge/shared-observations.md`](docs/knowledge/shared-observations.md).
-
----
-
-## Milestone status
-
-| ID | Milestone | Status |
-|----|-----------|--------|
-| M0 | Discovery distilled | ✅ Done |
-| M1 | LLM contract working | ✅ Done (mock 10/10). Real-provider runs pending API keys. |
-| M2 | End-to-end capture path | ⏭ Next |
-| M3 | Public share link | Planned |
-| M4 | Demo dry-run passed | Planned |
-| M5 | Hackathon submission | Planned |
-
-Full detail: [`docs/project/milestones.md`](docs/project/milestones.md).
+All planned milestones (M0–M12) and the privacy-by-design provider work (Phases
+A–C) have shipped. Current detail and history live in
+[Milestones](docs/project/milestones.md) and the
+[Change Log](docs/project/change-log.md).
