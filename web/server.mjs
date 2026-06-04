@@ -176,6 +176,7 @@ async function handleCardList(_req, res) {
     id: c.id,
     createdAt: c.createdAt,
     isPublic: !!c.isPublic,
+    encrypted: !!c.encrypted,
     domain: c.output?.proof_card?.domain || "business",
     activity_type: c.output?.proof_card?.activity_type || "other",
     output: c.output,

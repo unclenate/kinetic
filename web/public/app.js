@@ -354,9 +354,13 @@ function renderFeedItem(c) {
   const shareBtn = c.isPublic
     ? `<span class="feed-public">● public</span>`
     : `<button class="ghost small" type="button" data-share-id="${escapeAttr(c.id)}" data-share-domain="${escapeAttr(c.domain)}">Share →</button>`;
+  // Privacy residency indicator: encrypted (sensitive) cards were kept on-device.
+  const privacy = c.encrypted
+    ? `<span class="chip lock" title="Sensitive — processed on-device and encrypted at rest">🔒 on-device</span>`
+    : `<span class="chip cloud" title="Business — eligible for cloud processing and the public feed">☁ cloud-ok</span>`;
   return `<div class="feed-item" data-domain="${escapeAttr(c.domain)}">
     <div class="card proof-card">${renderProofCard(c.output.proof_card)}</div>
-    <div class="feed-item-actions">${shareBtn}</div>
+    <div class="feed-item-actions">${privacy}${shareBtn}</div>
   </div>`;
 }
 

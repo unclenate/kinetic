@@ -353,3 +353,14 @@ body.proof .ftr { border-top: 1px solid var(--line); padding-top: 16px; }
 .modal-overlay.hidden { display: none; }
 .modal { max-width: 440px; margin: 0; }
 .modal h3 { margin-top: 0; }
+
+/* ---- Phase C: residency chip on feed cards ---- */
+.feed-item .chip {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.feed-item .chip.lock { color: var(--accent); border-color: var(--accent); }
+.feed-item .chip.cloud { color: var(--muted); }
