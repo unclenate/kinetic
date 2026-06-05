@@ -76,6 +76,9 @@ export function mapMessage(msg) {
   if (snippet) text += ` ${snippet}`;
 
   const addresses = to.split(",").map((r) => domainOf(r) && r).filter(Boolean);
+  // Primary recipient domain — the recurring counterparty signal Phase 2a learns
+  // on (a mixed mailbox is discriminated by *who* you correspond with).
+  const counterparty = domainOf(addresses[0]) || null;
 
   return {
     source_id: `gmail-${msg.id || slug(subject)}`,
@@ -83,6 +86,7 @@ export function mapMessage(msg) {
     image_caption: "",
     occurred_at,
     provider_domain_hint: combineHints(addresses, `${subject} ${snippet}`),
+    counterparty,
   };
 }
 

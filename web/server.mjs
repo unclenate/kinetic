@@ -31,6 +31,7 @@ import { isConfigured as supabaseConfigured } from "../src/db/supabase.mjs";
 import { runProvider, residencyOf, isAvailable } from "../src/providers/registry.mjs";
 import { resolve as resolveRoute, buildOverride } from "../src/providers/router.mjs";
 import { hintFromKeywords } from "../src/harvesters/domain-hint.mjs";
+import { buildLearnedMap, effectiveHint } from "../src/learning/sender-map.mjs";
 
 const PORT = parseInt(process.env.PORT || "5173", 10);
 const PROVIDER_NAME = process.env.KINETIC_PROVIDER || "mock";
@@ -253,12 +254,19 @@ async function handleHarvest(req, res, sourceName, schema) {
     return send(res, 502, { error: "harvest failed", detail: String(e.message || e) });
   }
 
+  // Passive learning (Phase 2a): build the learned counterparty->domain map once
+  // from accumulated operator corrections, so it pre-seeds this batch's hints.
+  let learnedMap = {};
+  try {
+    learnedMap = buildLearnedMap(await store.getCorrections(), { minVotes: Number(process.env.KINETIC_LEARNING_MIN_VOTES) || 2 });
+  } catch { /* learning is best-effort; never block a harvest on it */ }
+
   // Process each harvested item through the LLM contract; cap to keep demo snappy.
   const PROCESS_CAP = Math.min(items.length, Number(body.process_max) || 3);
   const results = [];
   for (const item of items.slice(0, PROCESS_CAP)) {
     const t0 = Date.now();
-    const domainHint = item.provider_domain_hint || "unknown";
+    const domainHint = effectiveHint(learnedMap, { counterparty: item.counterparty, name: sourceName, provider_domain_hint: item.provider_domain_hint });
     const decision = resolveRoute({ source: sourceName, domainHint, override: globalOverride() });
     if (decision.requiresCloudAck) {
       results.push({ source_id: item.source_id, error: "sensitive capture to cloud requires acknowledgment" });
@@ -288,7 +296,7 @@ async function handleHarvest(req, res, sourceName, schema) {
       hint: domainHint,
       residency: decision.residency,
       origin: item.source_id || null,
-      source: { name: sourceName, source_id: item.source_id, occurred_at: item.occurred_at || null, domain_hint: item.provider_domain_hint || null },
+      source: { name: sourceName, source_id: item.source_id, occurred_at: item.occurred_at || null, domain_hint: item.provider_domain_hint || null, counterparty: item.counterparty || null },
     });
     results.push({ source_id: item.source_id, id, output: stored, elapsedMs: Date.now() - t0, provider: decision.provider, model: decision.model, residency: decision.residency });
   }

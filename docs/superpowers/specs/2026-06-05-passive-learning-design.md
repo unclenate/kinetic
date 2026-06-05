@@ -81,9 +81,18 @@ Server integration (`web/server.mjs`): once per harvest batch, build the learned
 explicit per-request override  >  learnedHint(map, key)  >  provider_domain_hint (heuristic)  >  "unknown"
 ```
 
-The learned hint feeds `domainHint`, so it influences **both** the privacy routing decision
-(`resolveRoute`) **and** the classification seed — the same single value already threaded
-through the pipeline. No router change; we only improve the value handed to it.
+The learned hint feeds `domainHint`, which today drives the **privacy routing decision**
+(`resolveRoute`: provider selection + sensitivity/encryption). This directly fixes the
+"privacy routing inherits the [misclassification] error" problem called out in the Phase 1
+spec — a known business counterparty now routes correctly regardless of the noisy heuristic.
+No router change; we only improve the value handed to it.
+
+**Scope boundary (honest):** `domainHint` is *not* currently passed into `runProvider`, so the
+learned hint does **not** yet influence the LLM's `domain` classification (the authoritative
+label / public-eligibility gate). Seeding the classifier prompt with the learned prior — so
+the model itself stops mislabeling a known counterparty, closing the *categorization* loop and
+not just the *routing* loop — is **Phase 2b** (it touches the shared prompt template and all
+four providers + mock, with regression-determinism risk, so it earns its own TDD slice).
 
 ## Data flow
 
@@ -94,7 +103,8 @@ harvest batch starts  ──>  store.getCorrections()  ──>  buildLearnedMap(
                                         │
 per item:  counterpartyKey(item-as-card)  ──>  learnedHint(map, key)  ──>  domainHint (if not "unknown")
                                         │
-                              resolveRoute(domainHint)  +  runProvider(seed)  ──>  saveCard(source.counterparty)
+                              resolveRoute(domainHint)  ──>  runProvider  ──>  saveCard(source.counterparty)
+                              (routing only this slice; classifier seeding = Phase 2b)
 ```
 
 The loop closes: a correction on counterparty X biases the next capture to/from X, which (if
@@ -140,6 +150,8 @@ Server/integration: a learned mapping overrides the heuristic hint for a matchin
 
 ## Non-goals (this slice)
 
+- **No classifier-prompt seeding** — the learned prior steers routing only, not the LLM's
+  `domain` output. That is Phase 2b (see Scope boundary above).
 - No few-shot prompt augmentation; no fine-tune export (later Phase 2 slices).
 - No new table and no migration — the divergence is still the dataset; `source.counterparty`
   rides the existing JSON column.

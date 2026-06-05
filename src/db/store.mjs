@@ -68,6 +68,11 @@ function createMemoryStore() {
       rec.encrypted = newDomain !== "business"; // mirror the at-rest sensitivity flag
       return rec;
     },
+    // Passive-learning dataset (Phase 2a). Memory does not persist
+    // `predicted_domain`, so there is nothing to learn from here — return empty.
+    async getCorrections() {
+      return [];
+    },
   };
 }
 
@@ -152,6 +157,17 @@ function createSupabaseStore() {
       }
       const rows = await supabase.update("proof_cards", `slug=eq.${encodeURIComponent(id)}`, patch);
       return mapRow(Array.isArray(rows) ? rows[0] : rows);
+    },
+    // Passive-learning dataset (Phase 2a). Returns only the learning columns —
+    // never `output`/`output_enc`, so no encrypted card content is read or
+    // decrypted. PostgREST can't compare two columns server-side, so we filter
+    // `domain !== predicted_domain` (the correction signal) in JS.
+    async getCorrections() {
+      const rows = await supabase.select(
+        "proof_cards",
+        "select=domain,predicted_domain,source&predicted_domain=not.is.null",
+      );
+      return (rows || []).filter((r) => r && r.domain !== r.predicted_domain);
     },
   };
 }

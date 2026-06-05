@@ -191,6 +191,22 @@ await test("gmail_sent: lists then fetches metadata, maps to a capture", async (
   assertCaptureShape(items[0], "gmail-");
   assert.match(items[0].text, /Signed SOW/);
   assert.equal(items[0].provider_domain_hint, "business"); // corp recipient
+  assert.equal(items[0].counterparty, "bigcorp.com"); // learning key (Phase 2a)
+});
+
+await test("gmail_sent.mapMessage: counterparty is the primary recipient domain, lowercased", async () => {
+  const { mapMessage } = await import("../src/harvesters/gmail_sent.mjs");
+  const item = mapMessage({
+    id: "mc", snippet: "x",
+    payload: { headers: [{ name: "To", value: "A <Alice@Acme.COM>, bob@other.com" }, { name: "Subject", value: "hi" }] },
+  });
+  assert.equal(item.counterparty, "acme.com");
+});
+
+await test("gmail_sent.mapMessage: no resolvable recipient yields null counterparty", async () => {
+  const { mapMessage } = await import("../src/harvesters/gmail_sent.mjs");
+  const item = mapMessage({ id: "mn", snippet: "x", payload: { headers: [{ name: "Subject", value: "hi" }] } });
+  assert.equal(item.counterparty, null);
 });
 
 await test("gmail_sent: free-mail recipient hints personal", async () => {
@@ -235,6 +251,13 @@ await test("outlook_sent: maps a sent message to a capture", async () => {
   assert.match(items[0].text, /contract redlines/);
   assert.equal(items[0].occurred_at, "2026-05-31T16:45:00.000Z");
   assert.equal(items[0].provider_domain_hint, "business");
+  assert.equal(items[0].counterparty, "partnerfirm.com"); // learning key (Phase 2a)
+});
+
+await test("outlook_sent.mapMessage: no resolvable recipient yields null counterparty", async () => {
+  const { mapMessage } = await import("../src/harvesters/outlook_sent.mjs");
+  const item = mapMessage({ id: "n", subject: "hi", toRecipients: [] });
+  assert.equal(item.counterparty, null);
 });
 
 // ---------------------------------------------------------------------------

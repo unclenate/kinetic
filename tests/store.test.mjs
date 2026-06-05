@@ -275,5 +275,38 @@ await test("recategorizeCard: supabase personal -> business decrypts the stored 
   delete process.env.SUPABASE_URL; delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 });
 
+// ---------------------------------------------------------------------------
+// getCorrections (Phase 2a passive-learning dataset)
+// ---------------------------------------------------------------------------
+
+await test("getCorrections: memory backend returns [] (no predicted_domain stored)", async () => {
+  delete process.env.SUPABASE_URL;
+  const { createStore } = await import("../src/db/store.mjs?gc0");
+  const store = createStore();
+  assert.equal(store.backend, "memory");
+  assert.deepEqual(await store.getCorrections(), []);
+});
+
+await test("getCorrections: supabase selects only learning columns, never output_enc", async () => {
+  process.env.SUPABASE_URL = "https://proj.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "k";
+  const { createStore } = await import("../src/db/store.mjs?gc1");
+  const store = createStore();
+  let capturedUrl;
+  const rows = [
+    { domain: "business", predicted_domain: "personal", source: { counterparty: "acme.com", name: "gmail_sent" } },
+    { domain: "personal", predicted_domain: "personal", source: { counterparty: "x.com", name: "gmail_sent" } }, // not a correction
+  ];
+  const stub = async (url) => { capturedUrl = url; return jsonResponse(rows); };
+  const out = await withFetch(stub, () => store.getCorrections());
+  assert.ok(capturedUrl.includes("select=domain%2Cpredicted_domain%2Csource") || capturedUrl.includes("select=domain,predicted_domain,source"), `query selects learning columns: ${capturedUrl}`);
+  assert.ok(!/output_enc|output(?!_)/.test(capturedUrl) || !capturedUrl.includes("output"), `query never requests output: ${capturedUrl}`);
+  // Only the genuine correction survives the domain != predicted_domain filter.
+  assert.equal(out.length, 1);
+  assert.equal(out[0].domain, "business");
+  assert.equal(out[0].predicted_domain, "personal");
+  delete process.env.SUPABASE_URL; delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

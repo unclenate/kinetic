@@ -8,7 +8,7 @@
 //   &$select=id,subject,sentDateTime,bodyPreview,toRecipients
 // Auth: an OAuth 2.0 bearer token with the Mail.Read scope.
 
-import { combineHints } from "./domain-hint.mjs";
+import { combineHints, domainOf } from "./domain-hint.mjs";
 
 const _node = globalThis.process;
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
@@ -63,6 +63,8 @@ export function mapMessage(msg) {
   if (snippet) text += ` ${snippet}`;
 
   const addresses = recipients.map((e) => e.address).filter(Boolean);
+  // Primary recipient domain — the recurring counterparty signal Phase 2a learns on.
+  const counterparty = domainOf(addresses[0]) || null;
 
   return {
     source_id: `outlook-${msg.id || slug(subject)}`,
@@ -70,6 +72,7 @@ export function mapMessage(msg) {
     image_caption: "",
     occurred_at,
     provider_domain_hint: combineHints(addresses, `${subject} ${snippet}`),
+    counterparty,
   };
 }
 
