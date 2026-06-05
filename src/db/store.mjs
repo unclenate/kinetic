@@ -61,6 +61,13 @@ function createMemoryStore() {
       // Newest-first: reverse the Map's insertion order.
       return [...cards.entries()].reverse().map(([id, rec]) => ({ id, ...rec }));
     },
+    async recategorizeCard(id, newDomain) {
+      const rec = cards.get(id);
+      if (!rec) return null;
+      if (rec.output?.proof_card) rec.output.proof_card.domain = newDomain;
+      rec.encrypted = newDomain !== "business"; // mirror the at-rest sensitivity flag
+      return rec;
+    },
   };
 }
 
@@ -123,6 +130,28 @@ function createSupabaseStore() {
     async listCards({ limit = 200 } = {}) {
       const rows = await supabase.select("proof_cards", `order=created_at.desc&limit=${limit}`);
       return rows.map((row) => ({ id: row.slug, ...mapRow(row) }));
+    },
+    // Operator correction of a card's domain (feedback sub-project, Phase 1). Sets the
+    // authoritative `domain`, keeps `predicted_domain` (the model's guess) as the training
+    // signal, clears `needs_review`, and re-aligns at-rest encryption to the new sensitivity.
+    async recategorizeCard(id, newDomain) {
+      const row = await supabase.selectOne("proof_cards", `slug=eq.${encodeURIComponent(id)}`);
+      if (!row) return null;
+      const output = row.encrypted && row.output_enc ? JSON.parse(decryptToken(row.output_enc)) : row.output;
+      if (output?.proof_card) output.proof_card.domain = newDomain;
+
+      const patch = { domain: newDomain, needs_review: false };
+      if (newDomain !== "business") {
+        patch.output_enc = encryptToken(JSON.stringify(output));
+        patch.encrypted = true;
+        patch.output = null;
+      } else {
+        patch.output = output;
+        patch.encrypted = false;
+        patch.output_enc = null;
+      }
+      const rows = await supabase.update("proof_cards", `slug=eq.${encodeURIComponent(id)}`, patch);
+      return mapRow(Array.isArray(rows) ? rows[0] : rows);
     },
   };
 }

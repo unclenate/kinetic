@@ -215,5 +215,65 @@ await test("memory store: tracks the encrypted flag for sensitive cards", async 
   assert.equal(rec.output.proof_card.domain, "personal");
 });
 
+await test("recategorizeCard: memory updates domain + flips the encrypted flag, unknown id -> null", async () => {
+  delete process.env.SUPABASE_URL;
+  const { createStore } = await import("../src/db/store.mjs?fb3");
+  const store = createStore();
+  const { id } = await store.saveCard({ output: mkCard("business"), provider: "mock", sensitive: false });
+  let rec = await store.recategorizeCard(id, "personal");
+  assert.equal(rec.output.proof_card.domain, "personal");
+  assert.equal(rec.encrypted, true);
+  rec = await store.recategorizeCard(id, "business");
+  assert.equal(rec.output.proof_card.domain, "business");
+  assert.equal(rec.encrypted, false);
+  assert.equal(await store.recategorizeCard("nope", "business"), null);
+});
+
+await test("recategorizeCard: supabase business -> personal encrypts the stored output", async () => {
+  process.env.KINETIC_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 4).toString("base64");
+  process.env.SUPABASE_URL = "https://proj.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "k";
+  const { createStore } = await import("../src/db/store.mjs?fb1");
+  const store = createStore();
+  const existing = { slug: "abc", output: mkCard("business"), output_enc: null, encrypted: false, domain: "business", is_public: false, created_at: "2026-06-04T00:00:00Z" };
+  let patchBody;
+  const stub = async (_url, opts) => {
+    if (!opts || !opts.method || opts.method === "GET") return jsonResponse([existing]);
+    patchBody = JSON.parse(opts.body);
+    return jsonResponse([{ ...existing, ...patchBody }]);
+  };
+  const rec = await withFetch(stub, () => store.recategorizeCard("abc", "personal"));
+  assert.equal(patchBody.domain, "personal");
+  assert.equal(patchBody.encrypted, true);
+  assert.equal(patchBody.needs_review, false);
+  assert.ok(patchBody.output_enc, "output_enc ciphertext set");
+  assert.ok(patchBody.output === null, "plaintext output cleared");
+  assert.equal(rec.output.proof_card.domain, "personal");
+  delete process.env.SUPABASE_URL; delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+});
+
+await test("recategorizeCard: supabase personal -> business decrypts the stored output", async () => {
+  process.env.KINETIC_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 4).toString("base64");
+  process.env.SUPABASE_URL = "https://proj.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "k";
+  const { encryptToken } = await import("../src/oauth/crypto.mjs");
+  const { createStore } = await import("../src/db/store.mjs?fb2");
+  const store = createStore();
+  const existing = { slug: "xyz", output: null, output_enc: encryptToken(JSON.stringify(mkCard("personal"))), encrypted: true, domain: "personal", is_public: false, created_at: "2026-06-04T00:00:00Z" };
+  let patchBody;
+  const stub = async (_url, opts) => {
+    if (!opts || !opts.method || opts.method === "GET") return jsonResponse([existing]);
+    patchBody = JSON.parse(opts.body);
+    return jsonResponse([{ ...existing, ...patchBody }]);
+  };
+  const rec = await withFetch(stub, () => store.recategorizeCard("xyz", "business"));
+  assert.equal(patchBody.domain, "business");
+  assert.equal(patchBody.encrypted, false);
+  assert.ok(patchBody.output && patchBody.output.proof_card.domain === "business", "plaintext output restored with corrected domain");
+  assert.ok(patchBody.output_enc === null);
+  assert.equal(rec.output.proof_card.domain, "business");
+  delete process.env.SUPABASE_URL; delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
