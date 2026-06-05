@@ -352,6 +352,9 @@ async function loadFeed() {
   feed.querySelectorAll("[data-share-id]").forEach((btn) => {
     btn.addEventListener("click", () => requestShare(btn.dataset.shareId, btn.dataset.shareDomain));
   });
+  feed.querySelectorAll("[data-recat-id]").forEach((sel) => {
+    sel.addEventListener("change", () => recategorize(sel.dataset.recatId, sel.value));
+  });
   // Re-apply the active filter to the freshly rendered list.
   const active = document.querySelector("#domain-tabs .tab.active");
   applyDomainFilter(active ? active.dataset.domain : "all");
@@ -365,10 +368,36 @@ function renderFeedItem(c) {
   const privacy = c.encrypted
     ? `<span class="chip lock" title="Sensitive — processed on-device and encrypted at rest">🔒 on-device</span>`
     : `<span class="chip cloud" title="Business — eligible for cloud processing and the public feed">☁ cloud-ok</span>`;
+  // Active correction: recategorize the card's domain. Changing it re-aligns the
+  // privacy/encryption posture and trains future routing (predicted vs corrected).
+  const domains = ["business", "personal", "family", "financial", "parenting"];
+  const recat = `<label class="recat-label" title="Recategorize this capture">domain
+    <select class="recat" data-recat-id="${escapeAttr(c.id)}">${
+      domains.map((d) => `<option value="${d}"${d === c.domain ? " selected" : ""}>${d}</option>`).join("")
+    }</select></label>`;
   return `<div class="feed-item" data-domain="${escapeAttr(c.domain)}">
     <div class="card proof-card">${renderProofCard(c.output.proof_card)}</div>
-    <div class="feed-item-actions">${privacy}${shareBtn}</div>
+    <div class="feed-item-actions">${privacy}${recat}${shareBtn}</div>
   </div>`;
+}
+
+async function recategorize(id, domain) {
+  try {
+    const res = await fetch(`/api/cards/${id}/recategorize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ domain }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setStatus(`Recategorize failed: ${j.error || res.status}`, "err");
+      return;
+    }
+    setStatus(`✓ Recategorized to ${domain}`, "ok");
+    loadFeed();
+  } catch (e) {
+    setStatus(`Recategorize failed: ${e.message}`, "err");
+  }
 }
 
 function applyDomainFilter(domain) {

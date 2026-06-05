@@ -364,3 +364,21 @@ body.proof .ftr { border-top: 1px solid var(--line); padding-top: 16px; }
 }
 .feed-item .chip.lock { color: var(--accent); border-color: var(--accent); }
 .feed-item .chip.cloud { color: var(--muted); }
+
+/* ---- Feedback: recategorize control on feed cards ---- */
+.feed-item .recat-label {
+  font-size: 11px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.feed-item .recat {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  color: var(--text);
+}
