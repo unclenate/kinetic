@@ -74,7 +74,8 @@ export function learnedHint(map, key) {
  * learned map with the harvester's heuristic guess. Precedence:
  *   learned mapping (if known) > item.provider_domain_hint > "unknown".
  * Explicit per-request / operator provider overrides win later, at routing —
- * this only improves the soft hint handed to the router and the classifier.
+ * this only improves the soft hint handed to the router (routing only this
+ * slice; seeding the LLM classifier with the learned prior is Phase 2b).
  * @param {Record<string,string>} map
  * @param {{ counterparty?: string, name?: string, provider_domain_hint?: string }} item
  * @returns {string}

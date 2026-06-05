@@ -299,8 +299,10 @@ await test("getCorrections: supabase selects only learning columns, never output
   ];
   const stub = async (url) => { capturedUrl = url; return jsonResponse(rows); };
   const out = await withFetch(stub, () => store.getCorrections());
-  assert.ok(capturedUrl.includes("select=domain%2Cpredicted_domain%2Csource") || capturedUrl.includes("select=domain,predicted_domain,source"), `query selects learning columns: ${capturedUrl}`);
-  assert.ok(!/output_enc|output(?!_)/.test(capturedUrl) || !capturedUrl.includes("output"), `query never requests output: ${capturedUrl}`);
+  assert.ok(capturedUrl.includes("select=domain,predicted_domain,source"), `query selects learning columns: ${capturedUrl}`);
+  // Privacy invariant: learning must never read card content. A single
+  // unambiguous negative — the query must not request output / output_enc at all.
+  assert.ok(!capturedUrl.includes("output"), `query never requests output columns: ${capturedUrl}`);
   // Only the genuine correction survives the domain != predicted_domain filter.
   assert.equal(out.length, 1);
   assert.equal(out[0].domain, "business");
