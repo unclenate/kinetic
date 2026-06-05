@@ -60,6 +60,7 @@
       <div class="row tab-row" role="tablist">
         <button class="ghost tab active" data-tab="github" type="button">GitHub</button>
         <button class="ghost tab" data-tab="gcal" type="button">Google Cal <span class="live-dot" title="live API"></span></button>
+        <button class="ghost tab" data-tab="fathom" type="button">Fathom <span class="live-dot" title="live API"></span></button>
         <button class="ghost tab" data-tab="calendar" type="button">Paste cal</button>
       </div>
 
@@ -82,6 +83,19 @@
           to the server once per harvest and not persisted.</p>
         <div class="row">
           <button id="gcal-harvest" class="primary" type="button">Harvest from primary calendar →</button>
+        </div>
+      </div>
+
+      <div class="tab-panel hidden" data-panel="fathom">
+        <label class="lbl">
+          <span>Fathom API key <em>(sent as <code>X-Api-Key</code>; create one in <a href="https://fathom.video/customize#api-access" target="_blank" rel="noopener">Fathom settings → API Access</a>)</em></span>
+          <input id="fathom-key" type="password" placeholder="your Fathom API key" autocomplete="off" />
+        </label>
+        <p class="muted small">Pulls your recent meetings — each meeting's AI summary
+          and action items become a Proof card plus admin tasks. The key is sent once
+          per harvest and is not persisted.</p>
+        <div class="row">
+          <button id="fathom-harvest" class="primary" type="button">Harvest recent meetings →</button>
         </div>
       </div>
 

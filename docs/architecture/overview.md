@@ -46,7 +46,7 @@ which bypasses Row Level Security. Vercel hosting is **planned, not built**.
 | LLM contract + validator (`schemas/kinetic-output.schema.json`, `src/validate.mjs`) | Defines and enforces the strict output JSON shape; validates every card before persist | @unclenate | Built; zero-dep regression harness in `src/regression.mjs` |
 | LLM providers (`src/providers/`) | Produce schema-conformant output from artifact text via a unified `process(input, opts)` contract | @unclenate | `mock` (deterministic default), `claude` (tool_use), `gemini` (response_schema), `ollama` (local, structured-output `format`), `openai` (JSON mode) — all built; live-verified against local Ollama |
 | Provider registry + router (`src/providers/registry.mjs`, `router.mjs`) | `registry` resolves a provider by name, runs it with validate+1-retry, and reports residency (local/cloud); `router` chooses the provider per capture by privacy rules (override → source-pin → hint-rule → default) | @unclenate | Built (Phase A/B). Routing active only when `KINETIC_PROVIDER=auto`; fail-closed + cloud-ack gates enforced server-side |
-| Harvesters (`src/harvesters/`) | Pull artifacts from signal sources on a common `harvest()` contract | @unclenate | `github`, `gcal`, `calendar` built and verified; `gdrive`, `onedrive`, `mscal`, `gmail_sent`, `outlook_sent` present (Microsoft-side providers gated by planned OAuth) |
+| Harvesters (`src/harvesters/`) | Pull artifacts from signal sources on a common `harvest()` contract | @unclenate | `github`, `gcal`, `calendar` built and verified; `fathom` (meeting assistant — AI summary + action items become a card + tasks); `gdrive`, `onedrive`, `mscal`, `gmail_sent`, `outlook_sent` present (Microsoft-side providers gated by planned OAuth). Granola/Circleback/etc. follow the same contract |
 | Persistence store (`src/db/store.mjs`) | Pluggable card persistence behind one interface | @unclenate | In-memory backend by default; Supabase backend when `SUPABASE_URL` is set |
 | Supabase client (`src/db/supabase.mjs`) | Minimal PostgREST-over-`fetch` client (no SDK) | @unclenate | Service-role key only; never sent to client |
 | OAuth subsystem (`src/oauth/`) | Authorization-code + PKCE flow, token persistence, refresh-on-use | @unclenate | Google **live**; Microsoft **planned** |
@@ -92,6 +92,7 @@ which bypasses Row Level Security. Vercel hosting is **planned, not built**.
 | Anthropic (Claude) | LLM provider via `tool_use` | Server-side API key | @unclenate |
 | Google (Gemini + Calendar/Drive/Gmail OAuth) | LLM provider (Gemini `response_schema`); harvest source via OAuth (**live**) | Server-side API key + per-user OAuth tokens (encrypted at rest) | @unclenate |
 | GitHub (public events) | Harvest source (no auth required) | Public, unauthenticated API | @unclenate |
+| Fathom.video | Meeting-assistant harvest source (AI summaries + action items) | Per-user API key (`X-Api-Key`, `FATHOM_API_KEY`), sent per-request | @unclenate |
 | Microsoft Graph | Harvest source (Calendar/OneDrive/Outlook) — **planned** | Per-user OAuth tokens (planned) | @unclenate |
 | Ollama | Local LLM provider (built; the privacy-routing local default) | Local host (`OLLAMA_BASE_URL`, default `:11434`) | @unclenate |
 | OpenAI | LLM provider (built; JSON mode) | Server-side API key (`OPENAI_API_KEY`) | @unclenate |

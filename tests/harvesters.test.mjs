@@ -282,6 +282,45 @@ await test("github: PR event enriches the title via a follow-up fetch", async ()
 });
 
 // ---------------------------------------------------------------------------
+// fathom — Fathom.video meeting assistant (X-Api-Key; summary + action items)
+// ---------------------------------------------------------------------------
+
+await test("fathom: requires an api key", async () => {
+  const { harvest } = await import("../src/harvesters/fathom.mjs");
+  await assert.rejects(() => harvest({}), /api key|FATHOM_API_KEY/i);
+});
+
+await test("fathom: maps a meeting (summary + action items) to a capture", async () => {
+  const { harvest } = await import("../src/harvesters/fathom.mjs");
+  const resp = {
+    items: [
+      {
+        recording_id: 698179885,
+        meeting_title: "EG AI | Fortify & ARMEXA discussion",
+        url: "https://fathom.video/calls/698179885",
+        recording_start_time: "2026-06-03T23:31:26Z",
+        recorded_by: { name: "Nathan DiNiro", email: "nate@fullgv.com" },
+        calendar_invitees: [{ name: "Jeremy", email: "jeremy@armexa.com", is_external: true }],
+        default_summary: { template_name: "general", markdown_formatted: "## Meeting Purpose\nAlign on EGAI strategy.\n## Key Takeaways\n- Discovery, not a pitch." },
+        action_items: [{ description: "Draft Friday agenda; send to Jeremy", assignee: { name: "Nathan DiNiro" } }],
+      },
+    ],
+    next_cursor: null,
+  };
+  let captured;
+  const stub = async (url, opts) => { captured = { url, headers: opts.headers }; return jsonResponse(resp); };
+  const items = await withFetch(stub, () => harvest({ apiKey: "fk_test", max: 5 }));
+  assert.equal(items.length, 1);
+  assert.match(captured.url, /api\.fathom\.ai\/external\/v1\/meetings/);
+  assert.equal(captured.headers["X-Api-Key"], "fk_test");
+  assertCaptureShape(items[0], "fathom-");
+  assert.match(items[0].text, /EG AI/);
+  assert.match(items[0].text, /Align on EGAI strategy/);          // summary flows in
+  assert.match(items[0].text, /Draft Friday agenda/);             // action item flows in
+  assert.equal(items[0].occurred_at, "2026-06-03T23:31:26.000Z");
+});
+
+// ---------------------------------------------------------------------------
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

@@ -111,6 +111,7 @@ async function initCapture() {
   $("#gh-harvest").addEventListener("click", () => onHarvest("github"));
   $("#cal-harvest").addEventListener("click", () => onHarvest("calendar"));
   $("#gcal-harvest").addEventListener("click", () => onHarvest("gcal"));
+  $("#fathom-harvest").addEventListener("click", () => onHarvest("fathom"));
 }
 
 function setHarvestStatus(msg, cls = "") {
@@ -136,6 +137,11 @@ async function onHarvest(source) {
     }
     body = { accessToken, max: 10, process_max: 3 };
     $("#gcal-harvest").disabled = true;
+  } else if (source === "fathom") {
+    const apiKey = $("#fathom-key").value.trim();
+    if (!apiKey) { setHarvestStatus("Paste your Fathom API key (Settings → API Access).", "err"); return; }
+    body = { apiKey, max: 10, process_max: 3 };
+    $("#fathom-harvest").disabled = true;
   } else {
     const text = $("#cal-text").value.trim();
     if (!text) { setHarvestStatus("Paste at least one calendar line.", "err"); return; }
@@ -168,6 +174,7 @@ async function onHarvest(source) {
     $("#gh-harvest").disabled = false;
     $("#cal-harvest").disabled = false;
     $("#gcal-harvest").disabled = false;
+    $("#fathom-harvest").disabled = false;
   }
 }
 
