@@ -169,6 +169,23 @@ async function handleCard(_req, res, id) {
   send(res, 200, rec);
 }
 
+const DOMAIN_ENUM = new Set(["business", "personal", "family", "financial", "parenting"]);
+
+// Operator correction of a card's domain (feedback sub-project, Phase 1). Updates the
+// authoritative domain, re-aligns at-rest encryption, and clears needs_review. The card's
+// `predicted_domain` (the model's original guess) is preserved as the training signal.
+async function handleRecategorize(req, res, id) {
+  const raw = await readBody(req);
+  let body;
+  try { body = JSON.parse(raw); } catch { return send(res, 400, { error: "invalid JSON" }); }
+  if (!DOMAIN_ENUM.has(body?.domain)) {
+    return send(res, 400, { error: "domain must be one of business|personal|family|financial|parenting" });
+  }
+  const rec = await store.recategorizeCard(id, body.domain);
+  if (!rec) return send(res, 404, { error: "card not found" });
+  send(res, 200, { id, domain: body.domain, encrypted: !!rec.encrypted, output: rec.output });
+}
+
 async function handleCardList(_req, res) {
   const cards = await store.listCards();
   // Lightweight feed shape: surface domain/activity for client-side filtering.
@@ -377,6 +394,9 @@ async function main() {
 
       const cardMatch = p.match(/^\/api\/cards\/([a-f0-9]{6,16})$/);
       if (req.method === "GET" && cardMatch) return handleCard(req, res, cardMatch[1]);
+
+      const recatMatch = p.match(/^\/api\/cards\/([a-f0-9]{6,16})\/recategorize$/);
+      if (req.method === "POST" && recatMatch) return handleRecategorize(req, res, recatMatch[1]);
 
       const proofMatch = p.match(/^\/proof\/([a-f0-9]{6,16})$/);
       if (req.method === "GET" && proofMatch) return handleProofPage(req, res, proofMatch[1]);
