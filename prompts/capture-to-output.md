@@ -70,6 +70,11 @@ specific than `family`. There is no `null`/`unknown` — pick the most likely
 domain even when evidence is thin, while keeping the narrative honest about
 limited signal.
 
+If a `learned_domain_prior` is supplied with the input below, treat it as a
+**soft prior** — it reflects the operator's own past corrections for this
+counterparty. Honor it when the content is ambiguous; let the content win when it
+clearly indicates a different domain. Absent a prior, classify from content alone.
+
 **Privacy note (do not state this in output, just be aware):** only
 `domain: "business"` cards are default-eligible for the public Proof Feed. A
 wrong `business` label on a private capture is a trust incident — when a capture
@@ -164,4 +169,5 @@ image_caption: "Screenshot of a 401 Unauthorized response in a terminal, then a
 ```
 text: {{TEXT}}
 image_caption: {{IMAGE_CAPTION}}
+{{DOMAIN_PRIOR}}
 ```

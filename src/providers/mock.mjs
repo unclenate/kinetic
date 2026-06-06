@@ -96,12 +96,18 @@ function classify(text) {
  * professional-first tool, so an unsignaled capture is treated as work.
  * (Ambiguous-default safety is tracked in shared-observations.md.)
  */
+// Returns the positively-matched domain, or null when the text carries no
+// non-business signal. The null lets `process` slot a learned prior (Phase 2b)
+// into the gap before falling back to the `business` default — so no-prior
+// behavior is unchanged (null -> business) and regression stays deterministic.
 function classifyDomain(text) {
   for (const [re, domain] of DOMAIN_HINTS) {
     if (re.test(text)) return domain;
   }
-  return "business";
+  return null;
 }
+
+const PRIOR_DOMAINS = new Set(["business", "personal", "family", "financial", "parenting"]);
 
 function extractTags(text) {
   const lower = text.toLowerCase();
@@ -171,7 +177,9 @@ export async function process(input, _opts = {}) {
   const caption = (input.image_caption || "").trim();
   const seed = `${text}|${caption}`;
   const category = classify(text + " " + caption);
-  const domain = classifyDomain(text + " " + caption);
+  // Content match wins; else a learned prior (Phase 2b); else the business default.
+  const prior = PRIOR_DOMAINS.has(input.domain_hint) ? input.domain_hint : "business";
+  const domain = classifyDomain(text + " " + caption) || prior;
   const tags = extractTags(text + " " + caption);
   const minutes = extractMinutes(text);
   const theme = THEME_FOR_CATEGORY[category] || "graphite";

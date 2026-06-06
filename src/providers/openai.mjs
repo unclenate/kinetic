@@ -5,6 +5,7 @@
 // Requires: OPENAI_API_KEY. Optional: OPENAI_MODEL (default gpt-4o-mini).
 
 import { readFile } from "node:fs/promises";
+import { domainPriorLine } from "../learning/sender-map.mjs";
 
 const _node = globalThis.process;
 const API_BASE = "https://api.openai.com/v1";
@@ -21,7 +22,8 @@ export async function process(input, opts = {}) {
   let content = (await loadPrompt())
     .replace("{{SCHEMA_INLINE}}", JSON.stringify(schema, null, 2))
     .replace("{{TEXT}}", input.text || "")
-    .replace("{{IMAGE_CAPTION}}", input.image_caption || "");
+    .replace("{{IMAGE_CAPTION}}", input.image_caption || "")
+    .replace("{{DOMAIN_PRIOR}}", domainPriorLine(input.domain_hint));
   if (opts.feedback) content += `\n\nYour previous output was invalid: ${opts.feedback}\nReturn corrected JSON only.`;
 
   const body = {

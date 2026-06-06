@@ -85,3 +85,32 @@ export function effectiveHint(map, item = {}) {
   if (learned !== "unknown") return learned;
   return item.provider_domain_hint || "unknown";
 }
+
+const DOMAINS = new Set(["business", "personal", "family", "financial", "parenting"]);
+
+/**
+ * The classifier prior (Phase 2b) for a harvest item: the learned domain for
+ * this item's counterparty, or "unknown". Unlike {@link effectiveHint} it does
+ * NOT fall back to the heuristic `provider_domain_hint` — only an operator-
+ * confirmed correction is trustworthy enough to seed the LLM's classification
+ * (the raw heuristic is the noise the corrections exist to fix).
+ * @param {Record<string,string>} map
+ * @param {{ counterparty?: string, name?: string }} item
+ * @returns {string}
+ */
+export function learnedPrior(map, item = {}) {
+  return learnedHint(map, counterpartyKey({ source: { counterparty: item.counterparty, name: item.name } }));
+}
+
+/**
+ * Render the `{{DOMAIN_PRIOR}}` prompt fragment for a learned prior. Returns ""
+ * for an unknown/missing/invalid domain so the prompt is byte-identical to the
+ * no-prior case (preserves regression determinism). When a valid domain is
+ * given, returns a single soft-prior line the classifier may override on content.
+ * @param {string|undefined} domain
+ * @returns {string}
+ */
+export function domainPriorLine(domain) {
+  if (!DOMAINS.has(domain)) return "";
+  return `learned_domain_prior: ${domain}  (a soft prior learned from the operator's past corrections for this counterparty — honor it when the content is ambiguous; the content wins when it clearly indicates a different domain)`;
+}

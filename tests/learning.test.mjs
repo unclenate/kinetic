@@ -7,7 +7,7 @@
 // Pure functions, no network. Run: node tests/learning.test.mjs
 
 import assert from "node:assert/strict";
-import { counterpartyKey, buildLearnedMap, learnedHint, effectiveHint } from "../src/learning/sender-map.mjs";
+import { counterpartyKey, buildLearnedMap, learnedHint, effectiveHint, learnedPrior, domainPriorLine } from "../src/learning/sender-map.mjs";
 
 let pass = 0;
 let fail = 0;
@@ -135,6 +135,38 @@ await test("effectiveHint: missing heuristic hint falls through to unknown", () 
 await test("effectiveHint: source-name key learns coarse non-email priors", () => {
   const map = { "source:fathom": "business" };
   assert.equal(effectiveHint(map, { name: "fathom", provider_domain_hint: "unknown" }), "business");
+});
+
+// ---------------------------------------------------------------------------
+// learnedPrior — the CLASSIFIER prior (Phase 2b). Unlike effectiveHint it does
+// NOT fall back to the noisy heuristic: only an operator-confirmed learned
+// mapping is trustworthy enough to tell the model. Returns "unknown" otherwise.
+// ---------------------------------------------------------------------------
+
+await test("learnedPrior: returns the learned domain for a known counterparty", () => {
+  const map = { "mail:acme.com": "business" };
+  assert.equal(learnedPrior(map, { counterparty: "acme.com", name: "gmail_sent", provider_domain_hint: "personal" }), "business");
+});
+
+await test("learnedPrior: does NOT fall back to the heuristic (unlearned -> unknown)", () => {
+  // effectiveHint would return "personal" here; the prior must stay "unknown".
+  assert.equal(learnedPrior({}, { counterparty: "newco.com", name: "gmail_sent", provider_domain_hint: "personal" }), "unknown");
+});
+
+// ---------------------------------------------------------------------------
+// domainPriorLine — the prompt fragment injected for {{DOMAIN_PRIOR}}.
+// ---------------------------------------------------------------------------
+
+await test("domainPriorLine: a real domain renders a soft-prior line naming it", () => {
+  const line = domainPriorLine("personal");
+  assert.match(line, /learned_domain_prior: personal/);
+  assert.match(line, /soft prior/i);
+});
+
+await test("domainPriorLine: unknown / missing / invalid renders empty (no prior injected)", () => {
+  assert.equal(domainPriorLine("unknown"), "");
+  assert.equal(domainPriorLine(undefined), "");
+  assert.equal(domainPriorLine("nonsense"), "");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

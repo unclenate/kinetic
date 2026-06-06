@@ -87,12 +87,21 @@ The learned hint feeds `domainHint`, which today drives the **privacy routing de
 spec — a known business counterparty now routes correctly regardless of the noisy heuristic.
 No router change; we only improve the value handed to it.
 
-**Scope boundary (honest):** `domainHint` is *not* currently passed into `runProvider`, so the
-learned hint does **not** yet influence the LLM's `domain` classification (the authoritative
-label / public-eligibility gate). Seeding the classifier prompt with the learned prior — so
-the model itself stops mislabeling a known counterparty, closing the *categorization* loop and
-not just the *routing* loop — is **Phase 2b** (it touches the shared prompt template and all
-four providers + mock, with regression-determinism risk, so it earns its own TDD slice).
+**Scope boundary (2a → 2b):** Phase 2a wired the learned hint into routing only. **Phase 2b
+(now landed)** additionally seeds the LLM classifier so the model itself stops mislabeling a
+known counterparty — closing the *categorization* loop, not just the *routing* loop:
+
+- A new `{{DOMAIN_PRIOR}}` placeholder in `prompts/capture-to-output.md` (filled by all four
+  text providers via the shared `domainPriorLine`) plus a soft-prior note in the Domain
+  selection section. Empty when no prior → the prompt is byte-identical to before.
+- `learnedPrior(map, item)` returns the learned domain **without** the heuristic fallback —
+  only an operator-confirmed mapping is trustworthy enough to seed the classifier (the raw
+  heuristic is the noise corrections exist to fix). `effectiveHint` (routing) keeps its
+  fallback; the two trust levels are deliberately distinct.
+- The server passes `domain_hint = learnedPrior` into `runProvider` only when it is a real
+  learned domain. The mock provider honors it **only when content carries no positive signal**
+  (its classifier now returns `null` on no-match), so content always wins and the 20/20
+  regression stays byte-identical (null → business default).
 
 ## Data flow
 
@@ -103,8 +112,8 @@ harvest batch starts  ──>  store.getCorrections()  ──>  buildLearnedMap(
                                         │
 per item:  counterpartyKey(item-as-card)  ──>  learnedHint(map, key)  ──>  domainHint (if not "unknown")
                                         │
-                              resolveRoute(domainHint)  ──>  runProvider  ──>  saveCard(source.counterparty)
-                              (routing only this slice; classifier seeding = Phase 2b)
+                  resolveRoute(domainHint)  +  runProvider(domain_hint=learnedPrior)  ──>  saveCard(source.counterparty)
+                  (2a: routing hint = learned→heuristic; 2b: classifier prior = learned only)
 ```
 
 The loop closes: a correction on counterparty X biases the next capture to/from X, which (if
@@ -148,10 +157,8 @@ and never `output_enc` (stubbed `fetch` asserts the query); memory returns `[]`.
 Server/integration: a learned mapping overrides the heuristic hint for a matching capture
 (stubbed `fetch`); explicit override still beats the learned hint; privacy-audit still green.
 
-## Non-goals (this slice)
+## Non-goals (2a/2b)
 
-- **No classifier-prompt seeding** — the learned prior steers routing only, not the LLM's
-  `domain` output. That is Phase 2b (see Scope boundary above).
 - No few-shot prompt augmentation; no fine-tune export (later Phase 2 slices).
 - No new table and no migration — the divergence is still the dataset; `source.counterparty`
   rides the existing JSON column.

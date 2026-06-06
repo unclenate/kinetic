@@ -14,6 +14,16 @@ function jsonResponse(obj, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => obj, text: async () => JSON.stringify(obj ?? "") };
 }
 
+// Shared schema-valid provider output for prompt-building tests (Phase 2b).
+const validOutput = {
+  admin_tasks: [],
+  proof_card: {
+    id: "proof_abc123", title: "Card", summary: "s".repeat(25), tech_tags: [],
+    time_to_resolution_minutes: null, impact_metric: null,
+    domain: "business", activity_type: "build", visual_theme: "neon", narrative: "n".repeat(45),
+  },
+};
+
 await test("projectStrict drops unsupported keywords but keeps shape", async () => {
   const { projectStrict } = await import("../src/providers/schema-project.mjs");
   const input = {
@@ -133,6 +143,73 @@ await test("registry: runProvider retries once on invalid output then succeeds",
   const out = await withFetch(stub, () => reg.runProvider("openai", { text: "x" }));
   assert.equal(call, 2, "retried exactly once");
   assert.equal(out.proof_card.activity_type, "build");
+});
+
+// ---------------------------------------------------------------------------
+// mock provider honors a learned domain prior (Phase 2b) — but content wins,
+// and the no-prior path stays byte-identical (regression determinism).
+// ---------------------------------------------------------------------------
+
+await test("mock: a learned prior sets the domain when content has no positive signal", async () => {
+  const { process: run } = await import("../src/providers/mock.mjs");
+  const neutral = "Reviewed the attached document and sent it back with notes.";
+  const baseline = await run({ text: neutral });
+  assert.equal(baseline.proof_card.domain, "business", "no-signal default is business");
+  const withPrior = await run({ text: neutral, domain_hint: "personal" });
+  assert.equal(withPrior.proof_card.domain, "personal", "prior fills the no-signal gap");
+});
+
+await test("mock: content with a clear signal overrides the prior", async () => {
+  const { process: run } = await import("../src/providers/mock.mjs");
+  // A parenting signal in the text must beat a 'business' prior.
+  const out = await run({ text: "Picked up the kids from school and helped with homework.", domain_hint: "business" });
+  assert.equal(out.proof_card.domain, "parenting");
+});
+
+await test("mock: no prior leaves classification unchanged (regression-safe)", async () => {
+  const { process: run } = await import("../src/providers/mock.mjs");
+  const neutral = "Reviewed the attached document and sent it back with notes.";
+  const a = await run({ text: neutral });
+  const b = await run({ text: neutral });
+  assert.equal(a.proof_card.domain, b.proof_card.domain);
+  assert.equal(a.proof_card.domain, "business");
+});
+
+// ---------------------------------------------------------------------------
+// text providers inject the {{DOMAIN_PRIOR}} fragment when a prior is present,
+// and never leak the literal placeholder when it is absent.
+// ---------------------------------------------------------------------------
+
+await test("ollama: injects the learned prior into the prompt, no placeholder leak", async () => {
+  const { process: run } = await import("../src/providers/ollama.mjs");
+  let captured;
+  const stub = async (_url, opts) => { captured = JSON.parse(opts.body); return jsonResponse({ message: { content: JSON.stringify(validOutput) } }); };
+  await withFetch(stub, () => run({ text: "x", domain_hint: "personal" }));
+  const prompt = captured.messages[0].content;
+  assert.match(prompt, /learned_domain_prior: personal/);
+  assert.ok(!prompt.includes("{{DOMAIN_PRIOR}}"), "placeholder replaced");
+});
+
+await test("ollama: no prior leaves no placeholder and no prior line", async () => {
+  const { process: run } = await import("../src/providers/ollama.mjs");
+  let captured;
+  const stub = async (_url, opts) => { captured = JSON.parse(opts.body); return jsonResponse({ message: { content: JSON.stringify(validOutput) } }); };
+  await withFetch(stub, () => run({ text: "x" }));
+  const prompt = captured.messages[0].content;
+  assert.ok(!prompt.includes("{{DOMAIN_PRIOR}}"), "placeholder replaced");
+  // The template's instruction mentions the term; assert no *injected* value line.
+  assert.ok(!/learned_domain_prior:\s*\w/.test(prompt), "no prior value line when none provided");
+});
+
+await test("openai: injects the learned prior into the prompt", async () => {
+  const { process: run } = await import("../src/providers/openai.mjs");
+  process.env.OPENAI_API_KEY = "k";
+  let captured;
+  const stub = async (_url, opts) => { captured = JSON.parse(opts.body); return jsonResponse({ choices: [{ message: { content: JSON.stringify(validOutput) } }] }); };
+  await withFetch(stub, () => run({ text: "x", domain_hint: "family" }));
+  const prompt = JSON.stringify(captured.messages);
+  assert.match(prompt, /learned_domain_prior: family/);
+  assert.ok(!prompt.includes("{{DOMAIN_PRIOR}}"));
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -9,6 +9,7 @@
 // our local validator after the response is received. Belt and suspenders.
 
 import { readFile } from "node:fs/promises";
+import { domainPriorLine } from "../learning/sender-map.mjs";
 
 // `process` is shadowed by our exported function below, so capture the Node
 // global up front under a different name.
@@ -86,7 +87,8 @@ export async function process(input, opts = {}) {
   let filled = promptTemplate
     .replace("{{SCHEMA_INLINE}}", JSON.stringify(schema, null, 2))
     .replace("{{TEXT}}", input.text || "")
-    .replace("{{IMAGE_CAPTION}}", input.image_caption || "");
+    .replace("{{IMAGE_CAPTION}}", input.image_caption || "")
+    .replace("{{DOMAIN_PRIOR}}", domainPriorLine(input.domain_hint));
 
   if (opts.feedback) filled += `\n\nYour previous output was invalid: ${opts.feedback}\nReturn corrected JSON only.`;
 

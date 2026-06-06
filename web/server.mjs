@@ -31,7 +31,7 @@ import { isConfigured as supabaseConfigured } from "../src/db/supabase.mjs";
 import { runProvider, residencyOf, isAvailable } from "../src/providers/registry.mjs";
 import { resolve as resolveRoute, buildOverride } from "../src/providers/router.mjs";
 import { hintFromKeywords } from "../src/harvesters/domain-hint.mjs";
-import { buildLearnedMap, effectiveHint } from "../src/learning/sender-map.mjs";
+import { buildLearnedMap, effectiveHint, learnedPrior } from "../src/learning/sender-map.mjs";
 
 const PORT = parseInt(process.env.PORT || "5173", 10);
 const PROVIDER_NAME = process.env.KINETIC_PROVIDER || "mock";
@@ -267,6 +267,9 @@ async function handleHarvest(req, res, sourceName, schema) {
   for (const item of items.slice(0, PROCESS_CAP)) {
     const t0 = Date.now();
     const domainHint = effectiveHint(learnedMap, { counterparty: item.counterparty, name: sourceName, provider_domain_hint: item.provider_domain_hint });
+    // Classifier prior (Phase 2b): only an operator-confirmed learned mapping is
+    // trustworthy enough to seed the LLM — never the raw heuristic. "unknown" → none.
+    const classifierPrior = learnedPrior(learnedMap, { counterparty: item.counterparty, name: sourceName });
     const decision = resolveRoute({ source: sourceName, domainHint, override: globalOverride() });
     if (decision.requiresCloudAck) {
       results.push({ source_id: item.source_id, error: "sensitive capture to cloud requires acknowledgment" });
@@ -278,7 +281,9 @@ async function handleHarvest(req, res, sourceName, schema) {
     }
     let output;
     try {
-      output = await runProvider(decision.provider, { text: item.text, image_caption: item.image_caption || "" }, decision.model ? { model: decision.model } : {});
+      const provInput = { text: item.text, image_caption: item.image_caption || "" };
+      if (classifierPrior !== "unknown") provInput.domain_hint = classifierPrior;
+      output = await runProvider(decision.provider, provInput, decision.model ? { model: decision.model } : {});
     } catch (e) {
       results.push({ source_id: item.source_id, error: String(e.message || e) });
       continue;
