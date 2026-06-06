@@ -86,7 +86,8 @@ export function effectiveHint(map, item = {}) {
   return item.provider_domain_hint || "unknown";
 }
 
-const DOMAINS = new Set(["business", "personal", "family", "financial", "parenting"]);
+/** The closed life-domain enum (ADR-0003). Shared so validators don't diverge. */
+export const DOMAINS = new Set(["business", "personal", "family", "financial", "parenting"]);
 
 /**
  * The classifier prior (Phase 2b) for a harvest item: the learned domain for

@@ -212,5 +212,35 @@ await test("openai: injects the learned prior into the prompt", async () => {
   assert.ok(!prompt.includes("{{DOMAIN_PRIOR}}"));
 });
 
+await test("claude: injects the learned prior, no placeholder leak", async () => {
+  const { process: run } = await import("../src/providers/claude.mjs");
+  process.env.ANTHROPIC_API_KEY = "k";
+  let prompt;
+  const stub = async (_url, opts) => { prompt = JSON.parse(opts.body).messages[0].content; return jsonResponse({ content: [{ type: "tool_use", input: validOutput }] }); };
+  await withFetch(stub, () => run({ text: "x", domain_hint: "financial" }));
+  assert.match(prompt, /learned_domain_prior: financial/);
+  assert.ok(!prompt.includes("{{DOMAIN_PRIOR}}"), "placeholder replaced");
+});
+
+await test("claude: no prior leaves no placeholder and no prior value line", async () => {
+  const { process: run } = await import("../src/providers/claude.mjs");
+  process.env.ANTHROPIC_API_KEY = "k";
+  let prompt;
+  const stub = async (_url, opts) => { prompt = JSON.parse(opts.body).messages[0].content; return jsonResponse({ content: [{ type: "tool_use", input: validOutput }] }); };
+  await withFetch(stub, () => run({ text: "x" }));
+  assert.ok(!prompt.includes("{{DOMAIN_PRIOR}}"), "placeholder replaced");
+  assert.ok(!/learned_domain_prior:\s*\w/.test(prompt), "no prior value line when none provided");
+});
+
+await test("gemini: injects the learned prior into the prompt", async () => {
+  const { process: run } = await import("../src/providers/gemini.mjs");
+  process.env.GEMINI_API_KEY = "k";
+  let prompt;
+  const stub = async (_url, opts) => { prompt = JSON.parse(opts.body).contents[0].parts[0].text; return jsonResponse({ candidates: [{ content: { parts: [{ text: JSON.stringify(validOutput) }] } }] }); };
+  await withFetch(stub, () => run({ text: "x", domain_hint: "parenting" }));
+  assert.match(prompt, /learned_domain_prior: parenting/);
+  assert.ok(!prompt.includes("{{DOMAIN_PRIOR}}"), "placeholder replaced");
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

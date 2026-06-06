@@ -5,6 +5,7 @@
 // verified without any LLM API key.
 
 import { createHash } from "node:crypto";
+import { DOMAINS } from "../learning/sender-map.mjs";
 
 const TECH_LEXICON = [
   // keyword          tag
@@ -107,7 +108,6 @@ function classifyDomain(text) {
   return null;
 }
 
-const PRIOR_DOMAINS = new Set(["business", "personal", "family", "financial", "parenting"]);
 
 function extractTags(text) {
   const lower = text.toLowerCase();
@@ -178,7 +178,7 @@ export async function process(input, _opts = {}) {
   const seed = `${text}|${caption}`;
   const category = classify(text + " " + caption);
   // Content match wins; else a learned prior (Phase 2b); else the business default.
-  const prior = PRIOR_DOMAINS.has(input.domain_hint) ? input.domain_hint : "business";
+  const prior = DOMAINS.has(input.domain_hint) ? input.domain_hint : "business";
   const domain = classifyDomain(text + " " + caption) || prior;
   const tags = extractTags(text + " " + caption);
   const minutes = extractMinutes(text);
